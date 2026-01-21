@@ -15,6 +15,10 @@ A game-like reinforcement learning environment for commanding a fleet of attacke
 - **Training monitoring**: HTML dashboard with real-time stats and simulation snapshots
 - **Backend abstraction**: Pluggable physics backends (Simple2.5D, Isaac Sim stub, MuJoCo stub)
 
+![Scenario View](docs/scenario_view.png)
+
+*Scenario viewer showing attackers (blue), defenders (red), objective zone (green), obstacles, and range circles*
+
 ---
 
 ## Installation
