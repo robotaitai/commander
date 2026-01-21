@@ -241,7 +241,7 @@ def main():
                 for i, cmd in enumerate(current_commands):
                     abbrev = ACTION_ABBREV.get(cmd, cmd[:4])
                     color = get_action_color(cmd, c)
-                    line += f" {c.colorize(abbrev:>10, color)} │"
+                    line += f" {c.colorize(f'{abbrev:>10}', color)} │"
                 line += f" {total_reward:>6.1f}"
                 print(line)
             
