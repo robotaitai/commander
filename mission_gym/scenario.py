@@ -61,6 +61,7 @@ class ScenarioManager:
                 x=spawn.x,
                 y=spawn.y,
                 heading=spawn.heading,
+                speed=type_config.initial_speed,  # Start with configured speed
                 altitude=spawn.altitude,
                 target_altitude=spawn.altitude,
                 integrity=type_config.initial_integrity,

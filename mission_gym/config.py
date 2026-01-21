@@ -176,6 +176,7 @@ class UnitTypeConfig:
     altitude_bands: int = 1
     altitude_change_time: float = 1.0
     behavior: dict = field(default_factory=dict)
+    initial_speed: float = 0.0  # Initial speed when spawned (0 = stationary)
 
 
 def load_unit_types(filename: str) -> dict[str, UnitTypeConfig]:
@@ -196,6 +197,7 @@ def load_unit_types(filename: str) -> dict[str, UnitTypeConfig]:
             altitude_bands=cfg.get("altitude_bands", 1),
             altitude_change_time=cfg.get("altitude_change_time", 1.0),
             behavior=cfg.get("behavior", {}),
+            initial_speed=cfg.get("initial_speed", 0.0),
         )
     return unit_types
 
