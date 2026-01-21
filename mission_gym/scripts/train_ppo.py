@@ -251,8 +251,10 @@ def main():
         run_dir,
         html_monitor.episode_rewards,
         html_monitor.timesteps_history,
+        html_monitor.episode_lengths,
     )
     print_info(f"Rewards history saved to {run_dir / 'rewards_history.json'}")
+    print_info(f"Summary saved to {run_dir / 'summary.txt'}")
     
     # Save final model
     model_path = run_dir / "final_model"

@@ -190,7 +190,27 @@ python -m mission_gym.scripts.record_video --model ppo_mission_gym --episodes 3 
 ### Evaluate Trained Model
 
 ```bash
-python -m mission_gym.scripts.evaluate --model ppo_mission_gym --episodes 10
+# Evaluate by run name (auto-finds model)
+python -m mission_gym.scripts.evaluate --model swift-falcon-20260121 --episodes 10
+
+# Evaluate with direct path
+python -m mission_gym.scripts.evaluate --model runs/swift-falcon-20260121/final_model --episodes 10
+
+# Headless evaluation (no rendering)
+python -m mission_gym.scripts.evaluate --model swift-falcon --episodes 100 --no-render --save-results results.json
+```
+
+### List All Runs
+
+```bash
+# List recent runs with performance metrics
+python -m mission_gym.scripts.list_runs
+
+# Sort by reward
+python -m mission_gym.scripts.list_runs --sort reward
+
+# Output as JSON
+python -m mission_gym.scripts.list_runs --json
 ```
 
 ---

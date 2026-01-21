@@ -166,16 +166,82 @@ def get_nvidia_smi_info() -> Optional[Dict]:
         return None
 
 
-def save_rewards_history(run_dir: Path, rewards: List[float], timesteps: List[int] = None) -> None:
-    """Save rewards history to JSON file."""
+def save_rewards_history(
+    run_dir: Path,
+    rewards: List[float],
+    timesteps: List[int] = None,
+    episode_lengths: List[int] = None,
+) -> None:
+    """Save rewards history with detailed statistics to JSON file."""
+    import numpy as np
+    
+    rewards_arr = np.array(rewards) if rewards else np.array([0])
+    
+    # Calculate statistics
+    stats = {
+        "total_episodes": len(rewards),
+        "total_timesteps": timesteps[-1] if timesteps else 0,
+        "mean_reward": float(np.mean(rewards_arr)) if len(rewards) > 0 else 0,
+        "std_reward": float(np.std(rewards_arr)) if len(rewards) > 0 else 0,
+        "min_reward": float(np.min(rewards_arr)) if len(rewards) > 0 else 0,
+        "max_reward": float(np.max(rewards_arr)) if len(rewards) > 0 else 0,
+        "final_mean_reward": float(np.mean(rewards_arr[-100:])) if len(rewards) > 0 else 0,
+        "final_mean_reward_10": float(np.mean(rewards_arr[-10:])) if len(rewards) > 0 else 0,
+    }
+    
+    # Reward trend (improvement from first 10% to last 10%)
+    if len(rewards) >= 20:
+        n = max(len(rewards) // 10, 1)
+        early_mean = float(np.mean(rewards_arr[:n]))
+        late_mean = float(np.mean(rewards_arr[-n:]))
+        stats["reward_improvement"] = late_mean - early_mean
+        stats["early_mean"] = early_mean
+        stats["late_mean"] = late_mean
+    
+    # Episode length stats
+    if episode_lengths:
+        lengths_arr = np.array(episode_lengths)
+        stats["mean_length"] = float(np.mean(lengths_arr))
+        stats["min_length"] = int(np.min(lengths_arr))
+        stats["max_length"] = int(np.max(lengths_arr))
+    
     history = {
-        "rewards": rewards,
+        "rewards": [float(r) for r in rewards],
         "timesteps": timesteps or list(range(len(rewards))),
+        "episode_lengths": episode_lengths or [],
+        "statistics": stats,
         "saved_at": datetime.now().isoformat(),
     }
     
     with open(run_dir / "rewards_history.json", "w") as f:
         json.dump(history, f, indent=2)
+    
+    # Also save a simple summary text file
+    summary = f"""Training Run Summary
+====================
+Run: {run_dir.name}
+Saved: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+
+Episodes: {stats['total_episodes']:,}
+Timesteps: {stats['total_timesteps']:,}
+
+Reward Statistics:
+  Mean:      {stats['mean_reward']:.2f} ± {stats['std_reward']:.2f}
+  Min:       {stats['min_reward']:.2f}
+  Max:       {stats['max_reward']:.2f}
+  Final 100: {stats['final_mean_reward']:.2f}
+  Final 10:  {stats['final_mean_reward_10']:.2f}
+"""
+    if "reward_improvement" in stats:
+        summary += f"""
+Improvement:
+  Early (first 10%):  {stats['early_mean']:.2f}
+  Late (last 10%):    {stats['late_mean']:.2f}
+  Improvement:        {stats['reward_improvement']:+.2f}
+"""
+    
+    with open(run_dir / "summary.txt", "w") as f:
+        f.write(summary)
 
 
 # Terminal colors for pretty output
