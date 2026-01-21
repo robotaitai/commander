@@ -16,6 +16,7 @@ from mission_gym.reward import RewardFunction, StepInfo
 from mission_gym.defenders import DefenderController
 from mission_gym.backends.simple2p5d import Simple2p5DBackend
 from mission_gym.renderer import Renderer, PYGAME_AVAILABLE
+from mission_gym.metrics import MetricsTracker
 
 
 class MissionGymEnv(gym.Env):
@@ -92,6 +93,9 @@ class MissionGymEnv(gym.Env):
         self.step_count: int = 0
         self.prev_distances: list[float] = []
         
+        # Metrics tracker (initialized properly in reset after we know num_attackers)
+        self.metrics: Optional[MetricsTracker] = None
+        
         # Rendering
         self.render_mode = render_mode
         self.renderer: Optional[Renderer] = None
@@ -122,9 +126,9 @@ class MissionGymEnv(gym.Env):
         bev_shape = (128, 128, 8)
         
         # Vector: per-unit features + global features
-        # Per unit: x, y, heading, speed, integrity, tag_cd, scan_cd, altitude, disabled = 9
+        # Per unit: x, y, heading_cos, heading_sin, speed, integrity, tag_cd, scan_cd, altitude, disabled = 10
         # Global: time_remaining, capture_progress = 2
-        vec_dim = self.num_attackers * 9 + 2
+        vec_dim = self.num_attackers * 10 + 2
         
         self.observation_space = spaces.Dict({
             "bev": spaces.Box(low=0.0, high=1.0, shape=bev_shape, dtype=np.float32),
@@ -163,6 +167,14 @@ class MissionGymEnv(gym.Env):
         self.step_count = 0
         self.prev_distances = self.reward_fn.get_distances_to_objective(self.attackers)
         self.last_actions = ["---"] * len(self.attackers)  # Initialize command display
+        
+        # Reset metrics tracker
+        if self.metrics is None:
+            self.metrics = MetricsTracker(len(self.attackers))
+        self.metrics.reset()
+        
+        # Reset engagement stats
+        self.engagement.stats.reset()
         
         # Get initial observation
         obs = self._get_observation()
@@ -255,6 +267,32 @@ class MissionGymEnv(gym.Env):
         # Update distances for next step
         self.prev_distances = self.reward_fn.get_distances_to_objective(self.attackers)
         
+        # Check if any attacker is in objective zone
+        in_objective_zone = any(
+            not a.is_disabled and 
+            math.hypot(a.x - self.objective.x, a.y - self.objective.y) <= self.objective.radius
+            for a in self.attackers
+        )
+        
+        # Record step metrics (get stats from engagement system)
+        self.metrics.record_step(
+            attackers=self.attackers,
+            objective=self.objective,
+            dt=dt * self.config.world.action_repeat,
+            collisions=total_collisions,
+            integrity_lost=integrity_lost,
+            units_disabled=newly_disabled,
+            any_detected=any_detected,
+            in_objective_zone=in_objective_zone,
+            tag_attempts_attacker=self.engagement.stats.tag_attempts_attacker,
+            tag_hits_attacker=self.engagement.stats.tag_hits_attacker,
+            tag_attempts_defender=self.engagement.stats.tag_attempts_defender,
+            tag_hits_defender=self.engagement.stats.tag_hits_defender,
+        )
+        
+        # Reset engagement stats for next step
+        self.engagement.stats.reset()
+        
         # Check termination
         terminated = self.objective.is_captured
         
@@ -271,6 +309,20 @@ class MissionGymEnv(gym.Env):
         # Pass through component breakdown for monitoring
         if "_component_breakdown" in reward_info:
             info["_component_breakdown"] = reward_info["_component_breakdown"]
+        
+        # Finalize episode metrics if done
+        if terminated or truncated:
+            if terminated:
+                reason = "captured"
+            elif all_disabled:
+                reason = "all_disabled"
+            else:
+                reason = "timeout"
+            info["episode_metrics"] = self.metrics.finish(
+                win=terminated,
+                reason=reason,
+                attackers=self.attackers,
+            )
         
         return obs, reward, terminated, truncated, info
     
@@ -438,14 +490,17 @@ class MissionGymEnv(gym.Env):
         
         # Per-unit features
         for attacker in self.attackers:
+            # Normalize heading from [0, 360) to [-1, 1] using sin/cos
+            heading_rad = math.radians(attacker.heading)
             features.extend([
                 attacker.x / self.config.world.width,  # Normalize to [0, 1]
                 attacker.y / self.config.world.height,
-                attacker.heading / 180.0,  # Normalize to [-1, 1]
+                math.cos(heading_rad),  # Heading as cos component [-1, 1]
+                math.sin(heading_rad),  # Heading as sin component [-1, 1]
                 attacker.speed / 15.0,  # Normalize by max reasonable speed
                 attacker.integrity / 100.0,
-                attacker.tag_cooldown / self.config.engagement.tag_cooldown,
-                attacker.scan_cooldown / self.config.engagement.scan_cooldown,
+                attacker.tag_cooldown / self.config.engagement.tag_cooldown if self.config.engagement.tag_cooldown > 0 else 0.0,
+                attacker.scan_cooldown / self.config.engagement.scan_cooldown if self.config.engagement.scan_cooldown > 0 else 0.0,
                 float(attacker.altitude) / 2.0,  # Normalize by max altitude
                 float(attacker.is_disabled),
             ])

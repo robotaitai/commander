@@ -103,7 +103,7 @@ def main():
     
     try:
         from mission_gym.env import MissionGymEnv
-        from mission_gym.scripts.monitoring import HTMLMonitorCallback, EvalWithMonitorCallback
+        from mission_gym.scripts.monitoring import HTMLMonitorCallback, EvalWithMonitorCallback, MetricsCallback
         print_info("MissionGymEnv and monitoring imported")
     except ImportError as e:
         print_error(f"Import failed: {e}")
@@ -177,10 +177,14 @@ def main():
         name_prefix="ppo_mission",
     )
     
-    callbacks = CallbackList([html_monitor, eval_callback, checkpoint_callback])
+    # Metrics callback for TensorBoard KPIs
+    metrics_callback = MetricsCallback(verbose=0)
+    
+    callbacks = CallbackList([html_monitor, eval_callback, checkpoint_callback, metrics_callback])
     print_info("HTML dashboard callback configured")
     print_info("Evaluation callback configured")
     print_info("Checkpoint callback configured")
+    print_info("Metrics callback configured (TensorBoard KPIs)")
     
     # Create PPO model with MultiInputPolicy (CNN on BEV + MLP on vec)
     print()

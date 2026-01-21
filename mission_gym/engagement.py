@@ -1,6 +1,6 @@
 """Engagement (tag) mechanics."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Optional
 import math
 
@@ -18,12 +18,29 @@ class TagResult:
     target_disabled: bool = False
 
 
+@dataclass
+class EngagementStats:
+    """Tracks engagement statistics per step/episode."""
+    tag_attempts_attacker: int = 0
+    tag_hits_attacker: int = 0
+    tag_attempts_defender: int = 0
+    tag_hits_defender: int = 0
+    
+    def reset(self) -> None:
+        """Reset step-level stats."""
+        self.tag_attempts_attacker = 0
+        self.tag_hits_attacker = 0
+        self.tag_attempts_defender = 0
+        self.tag_hits_defender = 0
+
+
 class EngagementSystem:
     """Handles tag/disable mechanics."""
     
     def __init__(self, config: EngagementConfig, dynamics: DynamicsEngine):
         self.config = config
         self.dynamics = dynamics
+        self.stats = EngagementStats()
     
     def _calculate_damage(self, distance: float) -> float:
         """
@@ -68,6 +85,12 @@ class EngagementSystem:
         if attacker.tag_cooldown > 0:
             return None
         
+        # Record attempt based on team
+        if attacker.team == "attacker":
+            self.stats.tag_attempts_attacker += 1
+        else:
+            self.stats.tag_attempts_defender += 1
+        
         # Find closest valid target
         best_target = None
         best_dist = float('inf')
@@ -110,6 +133,12 @@ class EngagementSystem:
                 attacker_id=attacker.unit_id,
                 target_id=-1,
             )
+        
+        # Record hit based on team
+        if attacker.team == "attacker":
+            self.stats.tag_hits_attacker += 1
+        else:
+            self.stats.tag_hits_defender += 1
         
         # Calculate damage with range falloff
         damage = self._calculate_damage(best_dist)

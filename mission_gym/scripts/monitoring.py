@@ -1508,3 +1508,79 @@ class EvalWithMonitorCallback(BaseCallback):
         font = pygame.font.Font(None, 20)
         screen.blit(font.render(f"Step: {step}", True, TEXT), (5, 5))
         screen.blit(font.render(f"R: {reward:.1f}", True, TEXT), (5, 22))
+
+
+class MetricsCallback(BaseCallback):
+    """
+    Callback that logs episode metrics to TensorBoard.
+    
+    Logs key performance indicators from the EpisodeMetrics collected by the env:
+    - Mission outcomes (win rate, time to capture)
+    - Engagement stats (tag hit rates)
+    - Detection/stealth metrics
+    - Fleet performance (distance, collisions)
+    """
+    
+    def __init__(self, verbose: int = 0):
+        super().__init__(verbose)
+        self.episode_count = 0
+        self.wins = 0
+    
+    def _on_step(self) -> bool:
+        """Log metrics from completed episodes."""
+        infos = self.locals.get("infos", [])
+        
+        for info in infos:
+            metrics = info.get("episode_metrics")
+            if not metrics:
+                continue
+            
+            self.episode_count += 1
+            if metrics.get("win", False):
+                self.wins += 1
+            
+            # Mission outcome KPIs
+            self.logger.record("kpi/win", float(metrics.get("win", False)))
+            self.logger.record("kpi/win_rate", self.wins / self.episode_count)
+            self.logger.record("kpi/episode_steps", metrics.get("episode_steps", 0))
+            self.logger.record("kpi/episode_sim_time", metrics.get("episode_sim_time", 0.0))
+            
+            # Objective metrics
+            self.logger.record("kpi/final_capture_progress", metrics.get("final_capture_progress", 0.0))
+            time_to_capture = metrics.get("time_to_capture")
+            if time_to_capture is not None:
+                self.logger.record("kpi/time_to_capture", time_to_capture)
+            self.logger.record("kpi/time_in_objective_zone", metrics.get("time_in_objective_zone", 0.0))
+            
+            # Fleet status
+            self.logger.record("fleet/attackers_alive_end", metrics.get("num_attackers_alive_end", 0))
+            self.logger.record("fleet/attackers_disabled", metrics.get("num_attackers_disabled_total", 0))
+            self.logger.record("fleet/distance_total", metrics.get("distance_total", 0.0))
+            self.logger.record("fleet/distance_mean", metrics.get("distance_mean", 0.0))
+            
+            # Engagement stats
+            self.logger.record("engagement/tag_attempts_attacker", metrics.get("tag_attempts_attacker", 0))
+            self.logger.record("engagement/tag_hits_attacker", metrics.get("tag_hits_attacker", 0))
+            self.logger.record("engagement/tag_hit_rate_attacker", metrics.get("tag_hit_rate_attacker", 0.0))
+            self.logger.record("engagement/tag_attempts_defender", metrics.get("tag_attempts_defender", 0))
+            self.logger.record("engagement/tag_hits_defender", metrics.get("tag_hits_defender", 0))
+            self.logger.record("engagement/tag_hit_rate_defender", metrics.get("tag_hit_rate_defender", 0.0))
+            self.logger.record("engagement/disable_events", metrics.get("disable_events", 0))
+            
+            # Detection / stealth
+            self.logger.record("stealth/detected_time", metrics.get("detected_time", 0.0))
+            self.logger.record("stealth/detected_time_pct", metrics.get("detected_time_pct", 0.0))
+            self.logger.record("stealth/detection_events", metrics.get("detection_events", 0))
+            first_detect = metrics.get("first_detect_time")
+            if first_detect is not None:
+                self.logger.record("stealth/first_detect_time", first_detect)
+            
+            # Collisions / violations
+            self.logger.record("safety/collisions_total", metrics.get("collisions_total", 0))
+            self.logger.record("safety/integrity_lost_total", metrics.get("integrity_lost_total", 0.0))
+            
+            # Termination reason distribution
+            reason = metrics.get("terminated_reason", "unknown")
+            self.logger.record(f"outcome/is_{reason}", 1.0)
+        
+        return True
