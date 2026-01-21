@@ -152,6 +152,15 @@ def main():
         run_dir=run_dir,
     )
     
+    # Pass reward component configs to the monitor
+    try:
+        # Get component configs from the reward function
+        component_configs = eval_env.reward_fn.get_component_configs()
+        html_monitor.update_component_configs(component_configs)
+        print_info(f"Tracking {len(component_configs)} reward components")
+    except Exception as e:
+        print_warning(f"Could not load reward components: {e}")
+    
     # Evaluation callback with HTML integration
     eval_callback = EvalWithMonitorCallback(
         eval_env=eval_env,

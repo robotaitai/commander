@@ -268,6 +268,10 @@ class MissionGymEnv(gym.Env):
         info = self._get_info()
         info["reward_breakdown"] = reward_info
         
+        # Pass through component breakdown for monitoring
+        if "_component_breakdown" in reward_info:
+            info["_component_breakdown"] = reward_info["_component_breakdown"]
+        
         return obs, reward, terminated, truncated, info
     
     def _decode_actions(self, action: np.ndarray) -> list[str]:

@@ -295,6 +295,76 @@ UGV_A:
 
 ---
 
+## Reward Component API
+
+The reward system uses a **modular component-based architecture** that makes it easy to:
+- Add new reward components
+- Track individual component contributions
+- Visualize rewards in the dashboard
+
+### Built-in Components
+
+| Component | Category | Icon | Description |
+|-----------|----------|------|-------------|
+| `capture_progress` | objective | 🎯 | Reward for capturing the objective |
+| `win_bonus` | objective | 🏆 | Large bonus for mission success |
+| `time_penalty` | penalty | ⏱️ | Small per-step penalty |
+| `collision_penalty` | penalty | 💥 | Penalty for hitting obstacles |
+| `integrity_loss` | survival | ❤️‍🩹 | Penalty for taking damage |
+| `unit_disabled` | survival | 💀 | Penalty when a unit is disabled |
+| `detected_penalty` | penalty | 👁️ | Penalty while detected |
+| `approach_objective` | shaping | 🧭 | Reward for moving toward objective |
+| `spread_formation` | shaping | ↔️ | Reward for spreading units apart |
+
+### Add a Custom Reward Component
+
+```python
+from mission_gym.reward_components import (
+    RewardComponent, RewardCategory, RewardContext
+)
+
+class TagSuccessReward(RewardComponent):
+    """Bonus reward for successfully tagging a defender."""
+    name = "tag_success"
+    category = RewardCategory.BONUS
+    color = "#22c55e"  # Green
+    icon = "🎯"
+    description = "Bonus for successful tag hits"
+    
+    def calculate(self, ctx: RewardContext) -> float:
+        # Access step info for tag success
+        if hasattr(ctx.step_info, 'tags_landed') and ctx.step_info.tags_landed > 0:
+            return 5.0 * ctx.step_info.tags_landed
+        return 0.0
+
+# Register it in your environment
+env.reward_fn.register_component(TagSuccessReward())
+```
+
+### Dashboard Visualization
+
+The HTML dashboard shows:
+
+1. **Reward Ticker** - Scrolling bar with all components (like stock tickers)
+2. **Component Cards** - Each component with:
+   - Total accumulated value
+   - Average per step
+   - % of steps where active
+   - Visual progress bar
+3. **Category Breakdown** - Aggregated by category (objective, penalty, shaping, etc.)
+
+### Enable/Disable Components
+
+```python
+# Disable a component
+env.reward_fn.enable_component("detected_penalty", False)
+
+# Adjust component weight
+env.reward_fn.set_component_weight("capture_progress", 2.0)  # Double the weight
+```
+
+---
+
 ## Project Structure
 
 ```

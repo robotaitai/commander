@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
-"""Training monitoring with HTML dashboard generation."""
+"""
+Training monitoring with HTML dashboard generation.
+
+Inspired by physical-ai.news aesthetic - dark theme, teal accents, 
+ticker-style displays, and card-based layouts.
+"""
 
 import base64
 import io
@@ -62,13 +67,12 @@ class HTMLMonitorCallback(BaseCallback):
     """
     Callback that generates an HTML dashboard for monitoring training progress.
     
-    Updates an HTML file with:
-    - Training stats (timesteps, episodes, FPS)
-    - GPU utilization (nvidia-smi)
-    - Reward curves
-    - Episode length trends
-    - Evaluation results
-    - Recent episode summaries
+    Features:
+    - Cyberpunk-inspired dark theme (physical-ai.news style)
+    - Real-time reward component ticker
+    - Interactive breakdown charts
+    - GPU utilization monitoring
+    - Simulation snapshots
     - Configuration viewer
     """
     
@@ -92,11 +96,16 @@ class HTMLMonitorCallback(BaseCallback):
         self.eval_rewards: List[float] = []
         self.eval_timesteps: List[int] = []
         
-        # GPU history for charts
+        # Reward component tracking
+        self.component_history: Dict[str, List[float]] = {}
+        self.component_configs: List[Dict] = []
+        self.latest_component_breakdown: List[Dict] = []
+        
+        # GPU history
         self.gpu_history: List[Dict] = []
         self.gpu_timestamps: List[str] = []
         
-        # Current episode tracking
+        # Episode tracking
         self.current_episode_reward = 0.0
         self.current_episode_length = 0
         self.episodes_completed = 0
@@ -145,120 +154,35 @@ class HTMLMonitorCallback(BaseCallback):
         
         return configs
     
+    def update_component_configs(self, configs: List[Dict]):
+        """Update reward component configurations."""
+        self.component_configs = configs
+    
+    def record_component_breakdown(self, breakdown: List[Dict]):
+        """Record a reward component breakdown."""
+        self.latest_component_breakdown = breakdown
+        
+        # Track history for each component
+        for comp in breakdown:
+            name = comp.get("name", "unknown")
+            value = comp.get("value", 0)
+            if name not in self.component_history:
+                self.component_history[name] = []
+            self.component_history[name].append(value)
+            # Keep last 1000 values
+            if len(self.component_history[name]) > 1000:
+                self.component_history[name] = self.component_history[name][-1000:]
+    
     def _update_gpu_history(self) -> Optional[Dict]:
         """Update GPU history and return current stats."""
         gpu_info = get_nvidia_smi_info()
         if gpu_info and gpu_info.get("gpus"):
             self.gpu_history.append(gpu_info)
             self.gpu_timestamps.append(datetime.now().strftime("%H:%M:%S"))
-            # Keep last 60 readings (about 30 minutes at 30s intervals)
             if len(self.gpu_history) > 60:
                 self.gpu_history = self.gpu_history[-60:]
                 self.gpu_timestamps = self.gpu_timestamps[-60:]
         return gpu_info
-    
-    def _generate_gpu_html(self, gpu_info: Optional[Dict]) -> str:
-        """Generate HTML for GPU stats."""
-        if not gpu_info or not gpu_info.get("gpus"):
-            return '''
-            <div class="stat-card">
-                <div class="stat-label">GPU Status</div>
-                <div class="stat-value" style="font-size: 1rem; color: var(--text-secondary);">No GPU detected</div>
-            </div>
-            '''
-        
-        gpus_html = []
-        for gpu in gpu_info["gpus"]:
-            name = gpu.get("name", "Unknown")
-            mem_used = gpu.get("memory_used_mb", 0)
-            mem_total = gpu.get("memory_total_mb", 1)
-            gpu_util = gpu.get("gpu_util_pct", 0) or 0
-            mem_util = gpu.get("mem_util_pct", 0) or 0
-            temp = gpu.get("temperature_c", 0) or 0
-            power_draw = gpu.get("power_draw_w", 0) or 0
-            power_limit = gpu.get("power_limit_w", 1) or 1
-            
-            mem_pct = (mem_used / mem_total * 100) if mem_total else 0
-            power_pct = (power_draw / power_limit * 100) if power_limit else 0
-            
-            # Color classes
-            gpu_color = "danger" if gpu_util > 90 else "warning" if gpu_util > 70 else "success"
-            mem_color = "danger" if mem_pct > 90 else "warning" if mem_pct > 70 else "success"
-            temp_color = "danger" if temp > 80 else "warning" if temp > 70 else "success"
-            
-            gpus_html.append(f'''
-            <div class="gpu-card">
-                <div class="gpu-name">{name}</div>
-                <div class="gpu-metrics">
-                    <div class="gpu-metric">
-                        <span class="metric-label">GPU</span>
-                        <div class="progress-bar">
-                            <div class="progress-fill {gpu_color}" style="width: {gpu_util}%"></div>
-                        </div>
-                        <span class="metric-value">{gpu_util}%</span>
-                    </div>
-                    <div class="gpu-metric">
-                        <span class="metric-label">MEM</span>
-                        <div class="progress-bar">
-                            <div class="progress-fill {mem_color}" style="width: {mem_pct:.0f}%"></div>
-                        </div>
-                        <span class="metric-value">{mem_used:,}/{mem_total:,} MB</span>
-                    </div>
-                    <div class="gpu-metric">
-                        <span class="metric-label">TEMP</span>
-                        <div class="progress-bar">
-                            <div class="progress-fill {temp_color}" style="width: {min(temp, 100)}%"></div>
-                        </div>
-                        <span class="metric-value">{temp}°C</span>
-                    </div>
-                    <div class="gpu-metric">
-                        <span class="metric-label">PWR</span>
-                        <div class="progress-bar">
-                            <div class="progress-fill" style="width: {power_pct:.0f}%"></div>
-                        </div>
-                        <span class="metric-value">{power_draw:.0f}W/{power_limit:.0f}W</span>
-                    </div>
-                </div>
-            </div>
-            ''')
-        
-        return f'''
-        <div class="chart-container">
-            <div class="chart-title">🖥️ GPU Status (Live)</div>
-            {"".join(gpus_html)}
-        </div>
-        '''
-    
-    def _generate_config_html(self) -> str:
-        """Generate HTML for config viewer."""
-        if not self.config_yaml:
-            return ""
-        
-        tabs = []
-        panels = []
-        
-        for i, (filename, content) in enumerate(self.config_yaml.items()):
-            file_id = filename.replace('.', '_').replace('/', '_')
-            active = "active" if i == 0 else ""
-            
-            short_name = filename.replace('.yaml', '').replace('_', ' ').title()
-            tabs.append(f'<button class="config-tab {active}" onclick="showConfig(\'{file_id}\')">{short_name}</button>')
-            
-            escaped_content = content.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
-            display = "block" if i == 0 else "none"
-            panels.append(f'<pre class="config-content" id="{file_id}" style="display: {display};">{escaped_content}</pre>')
-        
-        return f'''
-        <div class="chart-container">
-            <div class="chart-title">⚙️ Training Configuration</div>
-            <div class="config-tabs">
-                {"".join(tabs)}
-            </div>
-            <div class="config-panels">
-                {"".join(panels)}
-            </div>
-        </div>
-        '''
     
     def _on_training_start(self) -> None:
         self.start_time = datetime.now()
@@ -267,10 +191,15 @@ class HTMLMonitorCallback(BaseCallback):
     def _on_step(self) -> bool:
         rewards = self.locals.get("rewards", [0])
         dones = self.locals.get("dones", [False])
+        infos = self.locals.get("infos", [{}])
         
-        for reward, done in zip(rewards, dones):
+        for reward, done, info in zip(rewards, dones, infos):
             self.current_episode_reward += reward
             self.current_episode_length += 1
+            
+            # Track component breakdown if available
+            if "_component_breakdown" in info:
+                self.record_component_breakdown(info["_component_breakdown"])
             
             if done:
                 self.episode_rewards.append(self.current_episode_reward)
@@ -302,409 +231,809 @@ class HTMLMonitorCallback(BaseCallback):
             self.stored_snapshots = snapshots
         self._generate_html()
     
-    def _generate_snapshot_gallery(self, snapshots: List[Dict]) -> str:
-        """Generate HTML for simulation snapshot gallery."""
-        if not snapshots:
-            return '<div class="chart-container"><div class="chart-title">🎬 Simulation Snapshots</div><p style="color: var(--text-secondary);">Snapshots will appear here after first evaluation...</p></div>'
-        
-        sections = []
-        for snap in snapshots[-3:]:
-            timestep = snap.get("timestep", 0)
-            reward = snap.get("reward", 0)
-            frames = snap.get("frames", [])
-            
-            if not frames:
-                continue
-            
-            frame_html = ""
-            for frame in frames:
-                img_b64 = frame.get("image", "")
-                step = frame.get("step", 0)
-                r = frame.get("reward", 0)
-                frame_html += f'''
-                <div class="snapshot-card">
-                    <img src="data:image/png;base64,{img_b64}" alt="Step {step}">
-                    <div class="snapshot-info">Step {step} | R: {r:.1f}</div>
-                </div>'''
-            
-            sections.append(f'''
-            <div class="eval-section">
-                <div class="eval-header">
-                    <span class="eval-title">Eval @ {timestep:,} steps</span>
-                    <span class="eval-reward">Reward: {reward:.2f}</span>
-                </div>
-                <div class="snapshot-gallery">{frame_html}</div>
-            </div>''')
-        
-        if not sections:
-            return ""
-        
-        return f'''
-        <div class="chart-container">
-            <div class="chart-title">🎬 Simulation Snapshots (from Evaluations)</div>
-            {"".join(sections)}
-        </div>'''
-    
     def _generate_html(self) -> None:
-        """Generate the HTML dashboard."""
+        """Generate the HTML dashboard with physical-ai.news inspired design."""
         elapsed = datetime.now() - self.start_time if self.start_time else None
         elapsed_str = str(elapsed).split('.')[0] if elapsed else "N/A"
         
-        fps = self.num_timesteps / elapsed.total_seconds() if elapsed else 0
+        fps = self.num_timesteps / elapsed.total_seconds() if elapsed and elapsed.total_seconds() > 0 else 0
         mean_reward_100 = np.mean(self.episode_rewards[-100:]) if self.episode_rewards else 0
         mean_length_100 = np.mean(self.episode_lengths[-100:]) if self.episode_lengths else 0
         
+        # Calculate win rate (rough estimate from positive rewards)
+        if self.episode_rewards:
+            positive_episodes = sum(1 for r in self.episode_rewards[-100:] if r > 50)
+            win_rate = positive_episodes / min(100, len(self.episode_rewards)) * 100
+        else:
+            win_rate = 0
+        
         # Get GPU info
         gpu_info = self._update_gpu_history()
-        gpu_html = self._generate_gpu_html(gpu_info)
         
-        # Recent episodes table
-        recent_episodes = list(zip(
-            range(max(0, len(self.episode_rewards) - 10), len(self.episode_rewards)),
-            self.episode_rewards[-10:],
-            self.episode_lengths[-10:]
-        ))[::-1]
+        # Build component ticker data
+        component_ticker = self._build_component_ticker()
+        
+        # Build reward breakdown data
+        reward_breakdown = self._build_reward_breakdown()
+        
+        run_name = self.run_dir.name if self.run_dir else "Training Session"
         
         # Chart data
         chart_data = {
-            "timesteps": self.timesteps_history,
-            "mean_rewards": self.mean_rewards,
+            "timesteps": self.timesteps_history[-100:],
+            "mean_rewards": self.mean_rewards[-100:],
             "eval_timesteps": self.eval_timesteps,
             "eval_rewards": self.eval_rewards,
+            "component_history": {k: v[-50:] for k, v in self.component_history.items()},
         }
         
-        # GPU chart data
-        gpu_chart_data = {
-            "timestamps": self.gpu_timestamps[-30:],
-            "gpu_util": [g["gpus"][0]["gpu_util_pct"] if g["gpus"] else 0 for g in self.gpu_history[-30:]],
-            "mem_util": [g["gpus"][0]["mem_util_pct"] if g["gpus"] else 0 for g in self.gpu_history[-30:]],
-            "temperature": [g["gpus"][0]["temperature_c"] if g["gpus"] else 0 for g in self.gpu_history[-30:]],
+        html = self._build_html_page(
+            run_name=run_name,
+            elapsed_str=elapsed_str,
+            fps=fps,
+            mean_reward_100=mean_reward_100,
+            mean_length_100=mean_length_100,
+            win_rate=win_rate,
+            gpu_info=gpu_info,
+            component_ticker=component_ticker,
+            reward_breakdown=reward_breakdown,
+            chart_data=chart_data,
+        )
+        
+        self.html_path.write_text(html)
+    
+    def _build_component_ticker(self) -> List[Dict]:
+        """Build ticker data for reward components."""
+        ticker_items = []
+        
+        if self.component_configs:
+            for config in self.component_configs:
+                name = config.get("name", "unknown")
+                icon = config.get("icon", "📊")
+                color = config.get("color", "#58a6ff")
+                
+                # Get recent average
+                if name in self.component_history and self.component_history[name]:
+                    recent = self.component_history[name][-100:]
+                    avg_value = sum(recent) / len(recent) if recent else 0
+                    total = sum(self.component_history[name])
+                else:
+                    avg_value = 0
+                    total = 0
+                
+                ticker_items.append({
+                    "name": name.replace("_", " ").title(),
+                    "icon": icon,
+                    "color": color,
+                    "avg": avg_value,
+                    "total": total,
+                    "trend": "up" if avg_value > 0 else "down" if avg_value < 0 else "neutral",
+                })
+        
+        return ticker_items
+    
+    def _build_reward_breakdown(self) -> Dict:
+        """Build reward breakdown for visualization."""
+        breakdown = {
+            "components": [],
+            "categories": {},
         }
         
-        snapshot_html = self._generate_snapshot_gallery(self.stored_snapshots)
-        config_html = self._generate_config_html()
+        if self.component_configs:
+            for config in self.component_configs:
+                name = config.get("name", "unknown")
+                category = config.get("category", "shaping")
+                color = config.get("color", "#58a6ff")
+                icon = config.get("icon", "📊")
+                description = config.get("description", "")
+                
+                # Calculate stats
+                if name in self.component_history and self.component_history[name]:
+                    values = self.component_history[name]
+                    total = sum(values)
+                    avg = total / len(values) if values else 0
+                    non_zero = sum(1 for v in values if v != 0)
+                    pct_active = non_zero / len(values) * 100 if values else 0
+                else:
+                    total = 0
+                    avg = 0
+                    pct_active = 0
+                
+                breakdown["components"].append({
+                    "name": name,
+                    "display_name": name.replace("_", " ").title(),
+                    "category": category,
+                    "color": color,
+                    "icon": icon,
+                    "description": description,
+                    "total": total,
+                    "average": avg,
+                    "active_pct": pct_active,
+                })
+                
+                # Aggregate by category
+                if category not in breakdown["categories"]:
+                    breakdown["categories"][category] = {"total": 0, "count": 0}
+                breakdown["categories"][category]["total"] += total
+                breakdown["categories"][category]["count"] += 1
         
-        run_name = self.run_dir.name if self.run_dir else "Training"
+        return breakdown
+    
+    def _build_html_page(
+        self,
+        run_name: str,
+        elapsed_str: str,
+        fps: float,
+        mean_reward_100: float,
+        mean_length_100: float,
+        win_rate: float,
+        gpu_info: Optional[Dict],
+        component_ticker: List[Dict],
+        reward_breakdown: Dict,
+        chart_data: Dict,
+    ) -> str:
+        """Build the complete HTML page."""
         
-        html = f"""<!DOCTYPE html>
+        # Build ticker HTML
+        ticker_html = self._build_ticker_html(component_ticker)
+        
+        # Build GPU HTML
+        gpu_html = self._build_gpu_html(gpu_info)
+        
+        # Build reward breakdown HTML
+        breakdown_html = self._build_breakdown_html(reward_breakdown)
+        
+        # Build snapshots HTML
+        snapshots_html = self._build_snapshots_html()
+        
+        # Build config HTML
+        config_html = self._build_config_html()
+        
+        # Build recent episodes table
+        recent_html = self._build_recent_episodes_html()
+        
+        return f'''<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta http-equiv="refresh" content="30">
-    <title>{run_name} - Mission Gym Dashboard</title>
+    <title>{run_name} // Mission Gym</title>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Space+Grotesk:wght@400;500;700&display=swap" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         :root {{
-            --bg-primary: #0d1117;
-            --bg-secondary: #161b22;
-            --bg-tertiary: #21262d;
-            --text-primary: #c9d1d9;
-            --text-secondary: #8b949e;
-            --accent: #58a6ff;
-            --success: #3fb950;
-            --warning: #d29922;
-            --danger: #f85149;
+            --bg-dark: #0a0e14;
+            --bg-panel: #111820;
+            --bg-card: #171f2a;
+            --bg-hover: #1e2836;
+            --border: #2a3544;
+            --accent-teal: #00d4aa;
+            --accent-cyan: #00bfff;
+            --accent-purple: #a855f7;
+            --accent-pink: #ec4899;
+            --accent-yellow: #facc15;
+            --accent-orange: #f97316;
+            --success: #22c55e;
+            --warning: #f59e0b;
+            --danger: #ef4444;
+            --text-primary: #e6edf3;
+            --text-secondary: #7d8590;
+            --text-dim: #484f58;
+            --glow-teal: rgba(0, 212, 170, 0.3);
         }}
+        
         * {{ margin: 0; padding: 0; box-sizing: border-box; }}
+        
         body {{
-            font-family: 'Segoe UI', system-ui, sans-serif;
-            background: var(--bg-primary);
+            font-family: 'Space Grotesk', system-ui, sans-serif;
+            background: var(--bg-dark);
             color: var(--text-primary);
             min-height: 100vh;
+            overflow-x: hidden;
+        }}
+        
+        /* Ticker Strip */
+        .ticker-strip {{
+            background: linear-gradient(90deg, var(--bg-panel) 0%, var(--bg-card) 50%, var(--bg-panel) 100%);
+            border-bottom: 1px solid var(--border);
+            padding: 0.5rem 0;
+            overflow: hidden;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            z-index: 100;
+        }}
+        
+        .ticker-content {{
+            display: flex;
+            animation: ticker 30s linear infinite;
+            white-space: nowrap;
+        }}
+        
+        @keyframes ticker {{
+            0% {{ transform: translateX(0); }}
+            100% {{ transform: translateX(-50%); }}
+        }}
+        
+        .ticker-item {{
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0 1.5rem;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.85rem;
+        }}
+        
+        .ticker-item .icon {{ font-size: 1rem; }}
+        .ticker-item .name {{ color: var(--text-secondary); }}
+        .ticker-item .value {{ font-weight: 600; }}
+        .ticker-item .value.positive {{ color: var(--success); }}
+        .ticker-item .value.negative {{ color: var(--danger); }}
+        .ticker-item .value.neutral {{ color: var(--text-dim); }}
+        .ticker-item .separator {{ color: var(--border); margin: 0 0.5rem; }}
+        
+        /* Header */
+        .header {{
+            background: var(--bg-panel);
+            border-bottom: 1px solid var(--border);
+            padding: 1.5rem 2rem;
+            margin-top: 40px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }}
+        
+        .header-left {{
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }}
+        
+        .logo {{
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: var(--accent-teal);
+            text-shadow: 0 0 20px var(--glow-teal);
+        }}
+        
+        .run-badge {{
+            background: var(--bg-card);
+            border: 1px solid var(--accent-teal);
+            border-radius: 4px;
+            padding: 0.25rem 0.75rem;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.85rem;
+            color: var(--accent-teal);
+        }}
+        
+        .header-right {{
+            display: flex;
+            gap: 1rem;
+            align-items: center;
+        }}
+        
+        .status-indicator {{
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+        }}
+        
+        .status-dot {{
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--success);
+            animation: pulse 2s infinite;
+        }}
+        
+        @keyframes pulse {{
+            0%, 100% {{ opacity: 1; }}
+            50% {{ opacity: 0.5; }}
+        }}
+        
+        /* Main Container */
+        .container {{
+            max-width: 1600px;
+            margin: 0 auto;
             padding: 2rem;
         }}
-        .container {{ max-width: 1400px; margin: 0 auto; }}
-        h1 {{
-            font-size: 2rem;
-            margin-bottom: 0.5rem;
-            background: linear-gradient(135deg, var(--accent), #a371f7);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-        }}
-        .subtitle {{ color: var(--text-secondary); margin-bottom: 2rem; }}
-        .run-name {{
-            background: var(--bg-tertiary);
-            padding: 0.5rem 1rem;
-            border-radius: 8px;
-            font-family: monospace;
-            display: inline-block;
-            margin-bottom: 1rem;
-        }}
-        .grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 2rem; }}
-        .stat-card {{
-            background: var(--bg-secondary);
-            border: 1px solid var(--bg-tertiary);
-            border-radius: 12px;
-            padding: 1.5rem;
-        }}
-        .stat-label {{ color: var(--text-secondary); font-size: 0.85rem; margin-bottom: 0.5rem; }}
-        .stat-value {{ font-size: 1.8rem; font-weight: 600; }}
-        .stat-value.positive {{ color: var(--success); }}
-        .stat-value.warning {{ color: var(--warning); }}
-        .chart-container {{
-            background: var(--bg-secondary);
-            border: 1px solid var(--bg-tertiary);
-            border-radius: 12px;
-            padding: 1.5rem;
+        
+        /* Stats Grid */
+        .stats-grid {{
+            display: grid;
+            grid-template-columns: repeat(6, 1fr);
+            gap: 1rem;
             margin-bottom: 2rem;
         }}
-        .chart-title {{ font-size: 1.1rem; margin-bottom: 1rem; color: var(--text-primary); }}
-        canvas {{ max-height: 300px; }}
-        table {{
-            width: 100%;
-            border-collapse: collapse;
-            background: var(--bg-secondary);
-            border-radius: 12px;
+        
+        .stat-card {{
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 1.25rem;
+            transition: all 0.2s;
+        }}
+        
+        .stat-card:hover {{
+            border-color: var(--accent-teal);
+            box-shadow: 0 0 20px var(--glow-teal);
+        }}
+        
+        .stat-label {{
+            color: var(--text-secondary);
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-bottom: 0.5rem;
+        }}
+        
+        .stat-value {{
+            font-size: 1.75rem;
+            font-weight: 700;
+            font-family: 'JetBrains Mono', monospace;
+        }}
+        
+        .stat-value.positive {{ color: var(--success); }}
+        .stat-value.warning {{ color: var(--warning); }}
+        .stat-value.accent {{ color: var(--accent-teal); }}
+        
+        /* Grid Layout */
+        .grid-2 {{
+            display: grid;
+            grid-template-columns: 2fr 1fr;
+            gap: 1.5rem;
+            margin-bottom: 2rem;
+        }}
+        
+        .grid-3 {{
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 1.5rem;
+            margin-bottom: 2rem;
+        }}
+        
+        /* Panel */
+        .panel {{
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 8px;
             overflow: hidden;
         }}
-        th, td {{ padding: 1rem; text-align: left; border-bottom: 1px solid var(--bg-tertiary); }}
-        th {{ background: var(--bg-tertiary); color: var(--text-secondary); font-weight: 500; }}
-        tr:hover {{ background: var(--bg-tertiary); }}
-        .badge {{
-            display: inline-block;
-            padding: 0.25rem 0.75rem;
-            border-radius: 20px;
-            font-size: 0.8rem;
-            font-weight: 500;
-        }}
-        .badge-success {{ background: rgba(63, 185, 80, 0.2); color: var(--success); }}
-        .badge-warning {{ background: rgba(210, 153, 34, 0.2); color: var(--warning); }}
-        .last-update {{ color: var(--text-secondary); font-size: 0.85rem; margin-top: 2rem; text-align: center; }}
         
-        /* GPU Card Styles */
-        .gpu-card {{
-            background: var(--bg-tertiary);
-            border-radius: 8px;
-            padding: 1rem;
-            margin-bottom: 1rem;
+        .panel-header {{
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 1rem 1.25rem;
+            border-bottom: 1px solid var(--border);
+            background: var(--bg-panel);
         }}
-        .gpu-name {{
+        
+        .panel-title {{
+            font-size: 0.9rem;
             font-weight: 600;
-            margin-bottom: 0.75rem;
-            color: var(--accent);
-        }}
-        .gpu-metrics {{
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            color: var(--text-primary);
+            display: flex;
+            align-items: center;
             gap: 0.5rem;
         }}
+        
+        .panel-title .icon {{
+            color: var(--accent-teal);
+        }}
+        
+        .panel-body {{
+            padding: 1.25rem;
+        }}
+        
+        /* Reward Components */
+        .reward-grid {{
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 1rem;
+        }}
+        
+        .reward-card {{
+            background: var(--bg-panel);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 1rem;
+            transition: all 0.2s;
+        }}
+        
+        .reward-card:hover {{
+            transform: translateY(-2px);
+            border-color: var(--accent-cyan);
+        }}
+        
+        .reward-header {{
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            margin-bottom: 0.75rem;
+        }}
+        
+        .reward-icon {{
+            font-size: 1.25rem;
+        }}
+        
+        .reward-name {{
+            font-weight: 500;
+            font-size: 0.9rem;
+        }}
+        
+        .reward-category {{
+            margin-left: auto;
+            font-size: 0.7rem;
+            padding: 0.15rem 0.5rem;
+            border-radius: 10px;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }}
+        
+        .reward-category.objective {{ background: rgba(34, 197, 94, 0.2); color: var(--success); }}
+        .reward-category.penalty {{ background: rgba(239, 68, 68, 0.2); color: var(--danger); }}
+        .reward-category.shaping {{ background: rgba(0, 191, 255, 0.2); color: var(--accent-cyan); }}
+        .reward-category.survival {{ background: rgba(249, 115, 22, 0.2); color: var(--accent-orange); }}
+        .reward-category.bonus {{ background: rgba(168, 85, 247, 0.2); color: var(--accent-purple); }}
+        
+        .reward-stats {{
+            display: flex;
+            justify-content: space-between;
+            margin-top: 0.5rem;
+        }}
+        
+        .reward-stat {{
+            text-align: center;
+        }}
+        
+        .reward-stat-label {{
+            font-size: 0.65rem;
+            color: var(--text-dim);
+            text-transform: uppercase;
+        }}
+        
+        .reward-stat-value {{
+            font-size: 0.9rem;
+            font-weight: 600;
+            font-family: 'JetBrains Mono', monospace;
+        }}
+        
+        .reward-bar {{
+            height: 4px;
+            background: var(--bg-dark);
+            border-radius: 2px;
+            margin-top: 0.75rem;
+            overflow: hidden;
+        }}
+        
+        .reward-bar-fill {{
+            height: 100%;
+            border-radius: 2px;
+            transition: width 0.3s;
+        }}
+        
+        /* GPU Panel */
+        .gpu-card {{
+            background: var(--bg-panel);
+            border-radius: 6px;
+            padding: 1rem;
+            margin-bottom: 0.75rem;
+        }}
+        
+        .gpu-name {{
+            font-weight: 600;
+            color: var(--accent-cyan);
+            margin-bottom: 0.75rem;
+            font-size: 0.9rem;
+        }}
+        
+        .gpu-metrics {{
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 0.5rem;
+        }}
+        
         .gpu-metric {{
             display: flex;
             align-items: center;
             gap: 0.5rem;
         }}
+        
         .metric-label {{
+            font-size: 0.7rem;
+            color: var(--text-dim);
             width: 40px;
-            font-size: 0.75rem;
-            color: var(--text-secondary);
-            font-weight: 500;
+            text-transform: uppercase;
         }}
+        
         .progress-bar {{
             flex: 1;
-            height: 8px;
-            background: var(--bg-primary);
-            border-radius: 4px;
+            height: 6px;
+            background: var(--bg-dark);
+            border-radius: 3px;
             overflow: hidden;
         }}
+        
         .progress-fill {{
             height: 100%;
-            border-radius: 4px;
-            background: var(--accent);
+            border-radius: 3px;
             transition: width 0.3s;
         }}
+        
         .progress-fill.success {{ background: var(--success); }}
         .progress-fill.warning {{ background: var(--warning); }}
         .progress-fill.danger {{ background: var(--danger); }}
+        .progress-fill.accent {{ background: var(--accent-teal); }}
+        
         .metric-value {{
-            min-width: 100px;
-            font-size: 0.8rem;
+            font-size: 0.75rem;
+            font-family: 'JetBrains Mono', monospace;
+            min-width: 60px;
             text-align: right;
-            font-family: monospace;
         }}
         
-        /* Snapshot styles */
-        .snapshot-gallery {{
+        /* Chart */
+        canvas {{
+            max-height: 250px;
+        }}
+        
+        /* Snapshots */
+        .snapshot-grid {{
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
             gap: 1rem;
-            margin-top: 1rem;
         }}
+        
         .snapshot-card {{
-            background: var(--bg-tertiary);
-            border-radius: 8px;
+            background: var(--bg-panel);
+            border-radius: 6px;
             overflow: hidden;
+            border: 1px solid var(--border);
         }}
+        
         .snapshot-card img {{
             width: 100%;
             height: auto;
             display: block;
         }}
+        
         .snapshot-info {{
             padding: 0.5rem;
-            font-size: 0.8rem;
+            font-size: 0.75rem;
             color: var(--text-secondary);
+            font-family: 'JetBrains Mono', monospace;
         }}
-        .eval-section {{
-            margin-bottom: 2rem;
-            padding: 1rem;
-            background: var(--bg-secondary);
-            border: 1px solid var(--bg-tertiary);
-            border-radius: 12px;
-        }}
-        .eval-header {{
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 1rem;
-            padding-bottom: 0.5rem;
-            border-bottom: 1px solid var(--bg-tertiary);
-        }}
-        .eval-title {{ font-size: 0.9rem; color: var(--text-primary); }}
-        .eval-reward {{ font-size: 1.2rem; font-weight: 600; color: var(--accent); }}
         
-        /* Config styles */
+        /* Config Tabs */
         .config-tabs {{
             display: flex;
             flex-wrap: wrap;
             gap: 0.5rem;
             margin-bottom: 1rem;
         }}
+        
         .config-tab {{
             padding: 0.5rem 1rem;
-            background: var(--bg-tertiary);
-            border: 1px solid var(--bg-tertiary);
-            border-radius: 6px;
+            background: var(--bg-panel);
+            border: 1px solid var(--border);
+            border-radius: 4px;
             color: var(--text-secondary);
             cursor: pointer;
-            font-size: 0.85rem;
+            font-size: 0.8rem;
+            font-family: 'JetBrains Mono', monospace;
             transition: all 0.2s;
         }}
+        
         .config-tab:hover {{
-            background: var(--bg-primary);
+            border-color: var(--accent-teal);
             color: var(--text-primary);
         }}
+        
         .config-tab.active {{
-            background: var(--accent);
-            color: var(--bg-primary);
-            border-color: var(--accent);
+            background: var(--accent-teal);
+            color: var(--bg-dark);
+            border-color: var(--accent-teal);
         }}
+        
         .config-content {{
-            background: var(--bg-primary);
-            border: 1px solid var(--bg-tertiary);
-            border-radius: 8px;
+            background: var(--bg-dark);
+            border: 1px solid var(--border);
+            border-radius: 4px;
             padding: 1rem;
-            margin: 0;
-            max-height: 400px;
+            max-height: 300px;
             overflow-y: auto;
-            font-family: 'Fira Code', 'Consolas', monospace;
-            font-size: 0.8rem;
-            line-height: 1.5;
-            color: var(--text-primary);
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.75rem;
+            line-height: 1.6;
             white-space: pre-wrap;
+            color: var(--text-secondary);
         }}
-        .config-content::-webkit-scrollbar {{ width: 8px; }}
-        .config-content::-webkit-scrollbar-track {{ background: var(--bg-tertiary); border-radius: 4px; }}
-        .config-content::-webkit-scrollbar-thumb {{ background: var(--accent); border-radius: 4px; }}
+        
+        .config-content::-webkit-scrollbar {{ width: 6px; }}
+        .config-content::-webkit-scrollbar-track {{ background: var(--bg-panel); }}
+        .config-content::-webkit-scrollbar-thumb {{ background: var(--accent-teal); border-radius: 3px; }}
+        
+        /* Table */
+        table {{
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.85rem;
+        }}
+        
+        th, td {{
+            padding: 0.75rem 1rem;
+            text-align: left;
+            border-bottom: 1px solid var(--border);
+        }}
+        
+        th {{
+            background: var(--bg-panel);
+            color: var(--text-secondary);
+            font-weight: 500;
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }}
+        
+        tr:hover td {{
+            background: var(--bg-hover);
+        }}
+        
+        .badge {{
+            display: inline-block;
+            padding: 0.2rem 0.6rem;
+            border-radius: 10px;
+            font-size: 0.7rem;
+            font-weight: 500;
+        }}
+        
+        .badge-success {{ background: rgba(34, 197, 94, 0.2); color: var(--success); }}
+        .badge-warning {{ background: rgba(245, 158, 11, 0.2); color: var(--warning); }}
+        .badge-danger {{ background: rgba(239, 68, 68, 0.2); color: var(--danger); }}
+        
+        /* Footer */
+        .footer {{
+            text-align: center;
+            padding: 2rem;
+            color: var(--text-dim);
+            font-size: 0.8rem;
+        }}
+        
+        .footer a {{
+            color: var(--accent-teal);
+            text-decoration: none;
+        }}
+        
+        /* Responsive */
+        @media (max-width: 1200px) {{
+            .stats-grid {{ grid-template-columns: repeat(3, 1fr); }}
+            .grid-2 {{ grid-template-columns: 1fr; }}
+            .grid-3 {{ grid-template-columns: 1fr; }}
+        }}
+        
+        @media (max-width: 768px) {{
+            .stats-grid {{ grid-template-columns: repeat(2, 1fr); }}
+            .header {{ flex-direction: column; gap: 1rem; }}
+        }}
     </style>
 </head>
 <body>
+    <!-- Ticker Strip -->
+    {ticker_html}
+    
+    <!-- Header -->
+    <header class="header">
+        <div class="header-left">
+            <span class="logo">MISSION GYM</span>
+            <span class="run-badge">{run_name}</span>
+        </div>
+        <div class="header-right">
+            <div class="status-indicator">
+                <span class="status-dot"></span>
+                <span>TRAINING</span>
+            </div>
+            <div class="status-indicator" style="color: var(--text-dim);">
+                {datetime.now().strftime('%H:%M:%S')}
+            </div>
+        </div>
+    </header>
+    
+    <!-- Main Content -->
     <div class="container">
-        <h1>🎮 Mission Gym Training</h1>
-        <div class="run-name">📁 {run_name}</div>
-        <p class="subtitle">Real-time training progress dashboard</p>
-        
-        <div class="grid">
+        <!-- Stats Grid -->
+        <div class="stats-grid">
             <div class="stat-card">
-                <div class="stat-label">Total Timesteps</div>
-                <div class="stat-value">{self.num_timesteps:,}</div>
+                <div class="stat-label">Timesteps</div>
+                <div class="stat-value accent">{self.num_timesteps:,}</div>
             </div>
             <div class="stat-card">
-                <div class="stat-label">Episodes Completed</div>
+                <div class="stat-label">Episodes</div>
                 <div class="stat-value">{self.episodes_completed:,}</div>
             </div>
             <div class="stat-card">
-                <div class="stat-label">Mean Reward (100 ep)</div>
-                <div class="stat-value {'positive' if mean_reward_100 > 0 else 'warning'}">{mean_reward_100:.2f}</div>
+                <div class="stat-label">Mean Reward (100)</div>
+                <div class="stat-value {'positive' if mean_reward_100 > 0 else 'warning'}">{mean_reward_100:.1f}</div>
             </div>
             <div class="stat-card">
-                <div class="stat-label">Mean Length (100 ep)</div>
-                <div class="stat-value">{mean_length_100:.0f}</div>
+                <div class="stat-label">Win Rate</div>
+                <div class="stat-value {'positive' if win_rate > 50 else 'warning'}">{win_rate:.0f}%</div>
             </div>
             <div class="stat-card">
-                <div class="stat-label">Training FPS</div>
+                <div class="stat-label">FPS</div>
                 <div class="stat-value">{fps:.0f}</div>
             </div>
             <div class="stat-card">
-                <div class="stat-label">Elapsed Time</div>
+                <div class="stat-label">Elapsed</div>
                 <div class="stat-value" style="font-size: 1.2rem;">{elapsed_str}</div>
             </div>
         </div>
         
-        {gpu_html}
-        
-        <div class="chart-container">
-            <div class="chart-title">📈 Reward Progress</div>
-            <canvas id="rewardChart"></canvas>
+        <!-- Main Grid -->
+        <div class="grid-2">
+            <!-- Reward Chart -->
+            <div class="panel">
+                <div class="panel-header">
+                    <div class="panel-title"><span class="icon">📈</span> Reward Progress</div>
+                </div>
+                <div class="panel-body">
+                    <canvas id="rewardChart"></canvas>
+                </div>
+            </div>
+            
+            <!-- GPU Status -->
+            {gpu_html}
         </div>
         
-        <div class="chart-container">
-            <div class="chart-title">📊 Recent Episodes</div>
-            <table>
-                <thead>
-                    <tr>
-                        <th>Episode</th>
-                        <th>Reward</th>
-                        <th>Length</th>
-                        <th>Status</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {"".join(f'''
-                    <tr>
-                        <td>#{ep+1}</td>
-                        <td>{reward:.2f}</td>
-                        <td>{length}</td>
-                        <td><span class="badge {'badge-success' if reward > 0 else 'badge-warning'}">
-                            {'Good' if reward > 0 else 'Learning'}
-                        </span></td>
-                    </tr>''' for ep, reward, length in recent_episodes)}
-                </tbody>
-            </table>
-        </div>
+        <!-- Reward Components Breakdown -->
+        {breakdown_html}
         
-        {snapshot_html}
+        <!-- Recent Episodes -->
+        {recent_html}
         
+        <!-- Snapshots -->
+        {snapshots_html}
+        
+        <!-- Configuration -->
         {config_html}
-        
-        <p class="last-update">Last updated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} (auto-refreshes every 30s)</p>
     </div>
     
+    <footer class="footer">
+        <p>Mission Gym Training Dashboard • Auto-refreshes every 30s</p>
+    </footer>
+    
     <script>
+        // Config tab switching
         function showConfig(id) {{
             document.querySelectorAll('.config-content').forEach(el => el.style.display = 'none');
             document.querySelectorAll('.config-tab').forEach(el => el.classList.remove('active'));
             document.getElementById(id).style.display = 'block';
             event.target.classList.add('active');
         }}
-        const data = {json.dumps(chart_data)};
-        const gpuData = {json.dumps(gpu_chart_data)};
+        
+        // Chart
+        const chartData = {json.dumps(chart_data)};
         
         new Chart(document.getElementById('rewardChart'), {{
             type: 'line',
             data: {{
-                labels: data.timesteps,
+                labels: chartData.timesteps,
                 datasets: [{{
                     label: 'Mean Reward (100 ep)',
-                    data: data.mean_rewards,
-                    borderColor: '#58a6ff',
-                    backgroundColor: 'rgba(88, 166, 255, 0.1)',
+                    data: chartData.mean_rewards,
+                    borderColor: '#00d4aa',
+                    backgroundColor: 'rgba(0, 212, 170, 0.1)',
                     fill: true,
                     tension: 0.3,
+                    borderWidth: 2,
                 }}, {{
                     label: 'Eval Reward',
-                    data: data.eval_timesteps.map((t, i) => ({{ x: t, y: data.eval_rewards[i] }})),
-                    borderColor: '#3fb950',
-                    backgroundColor: '#3fb950',
+                    data: chartData.eval_timesteps.map((t, i) => ({{ x: t, y: chartData.eval_rewards[i] }})),
+                    borderColor: '#a855f7',
+                    backgroundColor: '#a855f7',
                     pointRadius: 6,
                     pointHoverRadius: 8,
                     showLine: false,
@@ -712,28 +1041,286 @@ class HTMLMonitorCallback(BaseCallback):
             }},
             options: {{
                 responsive: true,
+                maintainAspectRatio: false,
                 plugins: {{
-                    legend: {{ labels: {{ color: '#c9d1d9' }} }}
+                    legend: {{ 
+                        labels: {{ color: '#7d8590', font: {{ family: "'Space Grotesk'" }} }}
+                    }}
                 }},
                 scales: {{
                     x: {{
-                        title: {{ display: true, text: 'Timesteps', color: '#8b949e' }},
-                        ticks: {{ color: '#8b949e' }},
-                        grid: {{ color: '#21262d' }}
+                        title: {{ display: true, text: 'Timesteps', color: '#484f58' }},
+                        ticks: {{ color: '#484f58' }},
+                        grid: {{ color: '#2a3544' }}
                     }},
                     y: {{
-                        title: {{ display: true, text: 'Reward', color: '#8b949e' }},
-                        ticks: {{ color: '#8b949e' }},
-                        grid: {{ color: '#21262d' }}
+                        title: {{ display: true, text: 'Reward', color: '#484f58' }},
+                        ticks: {{ color: '#484f58' }},
+                        grid: {{ color: '#2a3544' }}
                     }}
                 }}
             }}
         }});
     </script>
 </body>
-</html>"""
+</html>'''
+    
+    def _build_ticker_html(self, ticker_items: List[Dict]) -> str:
+        """Build the scrolling ticker HTML."""
+        if not ticker_items:
+            return ""
         
-        self.html_path.write_text(html)
+        items_html = ""
+        for item in ticker_items:
+            value_class = "positive" if item["avg"] > 0 else "negative" if item["avg"] < 0 else "neutral"
+            items_html += f'''
+            <div class="ticker-item">
+                <span class="icon">{item["icon"]}</span>
+                <span class="name">{item["name"]}</span>
+                <span class="value {value_class}">{item["avg"]:+.3f}</span>
+                <span class="separator">│</span>
+            </div>'''
+        
+        # Duplicate for infinite scroll
+        return f'''
+        <div class="ticker-strip">
+            <div class="ticker-content">
+                {items_html}
+                {items_html}
+            </div>
+        </div>'''
+    
+    def _build_gpu_html(self, gpu_info: Optional[Dict]) -> str:
+        """Build GPU status panel HTML."""
+        if not gpu_info or not gpu_info.get("gpus"):
+            return '''
+            <div class="panel">
+                <div class="panel-header">
+                    <div class="panel-title"><span class="icon">🖥️</span> GPU Status</div>
+                </div>
+                <div class="panel-body">
+                    <p style="color: var(--text-secondary);">No GPU detected</p>
+                </div>
+            </div>'''
+        
+        gpus_html = ""
+        for gpu in gpu_info["gpus"]:
+            name = gpu.get("name", "Unknown")
+            gpu_util = gpu.get("gpu_util_pct", 0) or 0
+            mem_used = gpu.get("memory_used_mb", 0) or 0
+            mem_total = gpu.get("memory_total_mb", 1) or 1
+            mem_pct = (mem_used / mem_total * 100) if mem_total else 0
+            temp = gpu.get("temperature_c", 0) or 0
+            power = gpu.get("power_draw_w", 0) or 0
+            power_limit = gpu.get("power_limit_w", 1) or 1
+            power_pct = (power / power_limit * 100) if power_limit else 0
+            
+            gpu_class = "danger" if gpu_util > 90 else "warning" if gpu_util > 70 else "success"
+            mem_class = "danger" if mem_pct > 90 else "warning" if mem_pct > 70 else "success"
+            temp_class = "danger" if temp > 80 else "warning" if temp > 70 else "success"
+            
+            gpus_html += f'''
+            <div class="gpu-card">
+                <div class="gpu-name">{name}</div>
+                <div class="gpu-metrics">
+                    <div class="gpu-metric">
+                        <span class="metric-label">GPU</span>
+                        <div class="progress-bar"><div class="progress-fill {gpu_class}" style="width: {gpu_util}%"></div></div>
+                        <span class="metric-value">{gpu_util}%</span>
+                    </div>
+                    <div class="gpu-metric">
+                        <span class="metric-label">MEM</span>
+                        <div class="progress-bar"><div class="progress-fill {mem_class}" style="width: {mem_pct:.0f}%"></div></div>
+                        <span class="metric-value">{mem_used:,}MB</span>
+                    </div>
+                    <div class="gpu-metric">
+                        <span class="metric-label">TEMP</span>
+                        <div class="progress-bar"><div class="progress-fill {temp_class}" style="width: {min(temp, 100)}%"></div></div>
+                        <span class="metric-value">{temp}°C</span>
+                    </div>
+                    <div class="gpu-metric">
+                        <span class="metric-label">PWR</span>
+                        <div class="progress-bar"><div class="progress-fill accent" style="width: {power_pct:.0f}%"></div></div>
+                        <span class="metric-value">{power:.0f}W</span>
+                    </div>
+                </div>
+            </div>'''
+        
+        return f'''
+        <div class="panel">
+            <div class="panel-header">
+                <div class="panel-title"><span class="icon">🖥️</span> GPU Status</div>
+            </div>
+            <div class="panel-body">
+                {gpus_html}
+            </div>
+        </div>'''
+    
+    def _build_breakdown_html(self, breakdown: Dict) -> str:
+        """Build reward breakdown panel HTML."""
+        if not breakdown.get("components"):
+            return ""
+        
+        # Calculate max total for bar scaling
+        max_abs_total = max(abs(c["total"]) for c in breakdown["components"]) if breakdown["components"] else 1
+        if max_abs_total == 0:
+            max_abs_total = 1
+        
+        cards_html = ""
+        for comp in breakdown["components"]:
+            bar_width = min(abs(comp["total"]) / max_abs_total * 100, 100)
+            
+            cards_html += f'''
+            <div class="reward-card">
+                <div class="reward-header">
+                    <span class="reward-icon">{comp["icon"]}</span>
+                    <span class="reward-name">{comp["display_name"]}</span>
+                    <span class="reward-category {comp["category"]}">{comp["category"]}</span>
+                </div>
+                <div class="reward-stats">
+                    <div class="reward-stat">
+                        <div class="reward-stat-label">Total</div>
+                        <div class="reward-stat-value" style="color: {comp['color']}">{comp["total"]:+.1f}</div>
+                    </div>
+                    <div class="reward-stat">
+                        <div class="reward-stat-label">Avg/Step</div>
+                        <div class="reward-stat-value">{comp["average"]:+.4f}</div>
+                    </div>
+                    <div class="reward-stat">
+                        <div class="reward-stat-label">Active</div>
+                        <div class="reward-stat-value">{comp["active_pct"]:.0f}%</div>
+                    </div>
+                </div>
+                <div class="reward-bar">
+                    <div class="reward-bar-fill" style="width: {bar_width}%; background: {comp['color']}"></div>
+                </div>
+            </div>'''
+        
+        return f'''
+        <div class="panel" style="margin-bottom: 2rem;">
+            <div class="panel-header">
+                <div class="panel-title"><span class="icon">🎯</span> Reward Components</div>
+            </div>
+            <div class="panel-body">
+                <div class="reward-grid">
+                    {cards_html}
+                </div>
+            </div>
+        </div>'''
+    
+    def _build_snapshots_html(self) -> str:
+        """Build snapshots gallery HTML."""
+        if not self.stored_snapshots:
+            return ""
+        
+        # Get latest snapshot
+        latest = self.stored_snapshots[-1] if self.stored_snapshots else None
+        if not latest or not latest.get("frames"):
+            return ""
+        
+        frames_html = ""
+        for frame in latest.get("frames", [])[:6]:
+            frames_html += f'''
+            <div class="snapshot-card">
+                <img src="data:image/png;base64,{frame.get("image", "")}" alt="Step {frame.get("step", 0)}">
+                <div class="snapshot-info">Step {frame.get("step", 0)} • R: {frame.get("reward", 0):.1f}</div>
+            </div>'''
+        
+        return f'''
+        <div class="panel" style="margin-bottom: 2rem;">
+            <div class="panel-header">
+                <div class="panel-title"><span class="icon">🎬</span> Latest Evaluation Snapshots</div>
+                <span style="color: var(--text-dim); font-size: 0.8rem;">@ {latest.get("timestep", 0):,} steps</span>
+            </div>
+            <div class="panel-body">
+                <div class="snapshot-grid">
+                    {frames_html}
+                </div>
+            </div>
+        </div>'''
+    
+    def _build_recent_episodes_html(self) -> str:
+        """Build recent episodes table HTML."""
+        if not self.episode_rewards:
+            return ""
+        
+        recent = list(zip(
+            range(max(0, len(self.episode_rewards) - 10), len(self.episode_rewards)),
+            self.episode_rewards[-10:],
+            self.episode_lengths[-10:]
+        ))[::-1]
+        
+        rows_html = ""
+        for ep, reward, length in recent:
+            if reward > 50:
+                badge = '<span class="badge badge-success">WIN</span>'
+            elif reward > 0:
+                badge = '<span class="badge badge-warning">PARTIAL</span>'
+            else:
+                badge = '<span class="badge badge-danger">LOSS</span>'
+            
+            rows_html += f'''
+            <tr>
+                <td>#{ep + 1}</td>
+                <td style="font-family: 'JetBrains Mono', monospace;">{reward:.1f}</td>
+                <td>{length}</td>
+                <td>{badge}</td>
+            </tr>'''
+        
+        return f'''
+        <div class="panel" style="margin-bottom: 2rem;">
+            <div class="panel-header">
+                <div class="panel-title"><span class="icon">📊</span> Recent Episodes</div>
+            </div>
+            <div class="panel-body" style="padding: 0;">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Episode</th>
+                            <th>Reward</th>
+                            <th>Length</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {rows_html}
+                    </tbody>
+                </table>
+            </div>
+        </div>'''
+    
+    def _build_config_html(self) -> str:
+        """Build configuration viewer HTML."""
+        if not self.config_yaml:
+            return ""
+        
+        tabs_html = ""
+        panels_html = ""
+        
+        for i, (filename, content) in enumerate(self.config_yaml.items()):
+            file_id = filename.replace('.', '_').replace('/', '_')
+            active = "active" if i == 0 else ""
+            display = "block" if i == 0 else "none"
+            
+            short_name = filename.replace('.yaml', '').replace('_', ' ').title()
+            
+            tabs_html += f'<button class="config-tab {active}" onclick="showConfig(\'{file_id}\')">{short_name}</button>'
+            
+            escaped = content.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+            panels_html += f'<pre class="config-content" id="{file_id}" style="display: {display};">{escaped}</pre>'
+        
+        return f'''
+        <div class="panel">
+            <div class="panel-header">
+                <div class="panel-title"><span class="icon">⚙️</span> Configuration</div>
+            </div>
+            <div class="panel-body">
+                <div class="config-tabs">
+                    {tabs_html}
+                </div>
+                {panels_html}
+            </div>
+        </div>'''
 
 
 class EvalWithMonitorCallback(BaseCallback):
@@ -856,16 +1443,16 @@ class EvalWithMonitorCallback(BaseCallback):
         import pygame
         import math
         
-        BG = (30, 30, 40)
-        GRID = (50, 50, 60)
-        OBSTACLE = (80, 80, 100)
-        OBJECTIVE = (60, 120, 60)
-        OBJECTIVE_CAPTURED = (100, 200, 100)
-        ATTACKER_UGV = (100, 150, 255)
-        ATTACKER_UAV = (150, 200, 255)
-        DEFENDER = (255, 100, 100)
-        DISABLED = (100, 100, 100)
-        TEXT = (220, 220, 220)
+        BG = (10, 14, 20)
+        GRID = (42, 53, 68)
+        OBSTACLE = (80, 90, 110)
+        OBJECTIVE = (0, 100, 80)
+        OBJECTIVE_CAPTURED = (0, 212, 170)
+        ATTACKER_UGV = (0, 191, 255)
+        ATTACKER_UAV = (100, 200, 255)
+        DEFENDER = (239, 68, 68)
+        DISABLED = (72, 79, 88)
+        TEXT = (230, 237, 243)
         
         config = env.config
         world_w = config.world.width

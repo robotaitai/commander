@@ -1,11 +1,23 @@
-"""Reward function for the environment."""
+"""
+Reward function for the environment.
+
+This module provides backward-compatible access to the reward system while
+using the new component-based architecture under the hood.
+"""
 
 from dataclasses import dataclass
+from typing import Dict, List, Any, Optional
 import math
-import numpy as np
 
 from mission_gym.config import RewardConfig, ObjectiveConfig
 from mission_gym.dynamics import UnitState
+from mission_gym.reward_components import (
+    RewardRegistry,
+    RewardContext,
+    RewardResult,
+    EpisodeRewardTracker,
+    create_default_registry,
+)
 
 
 @dataclass
@@ -20,17 +32,53 @@ class StepInfo:
 
 
 class RewardFunction:
-    """Calculates rewards based on configuration."""
+    """
+    Calculates rewards based on configuration using the component-based system.
+    
+    This class provides backward compatibility with the original interface
+    while using the new modular reward component architecture.
+    """
     
     def __init__(self, config: RewardConfig, objective: ObjectiveConfig):
         self.config = config
         self.objective = objective
+        
+        # Create component registry with default components
+        self.registry = create_default_registry()
+        
+        # Episode tracker for detailed statistics
+        self.tracker = EpisodeRewardTracker()
+        
+        # Apply weights from config
+        self._apply_config_weights()
+    
+    def _apply_config_weights(self):
+        """Apply weights from RewardConfig to components."""
+        weight_map = {
+            "capture_progress": self.config.capture_progress,
+            "win_bonus": self.config.win_bonus,
+            "time_penalty": 1.0,  # Already scaled in config
+            "collision_penalty": 1.0,
+            "integrity_loss": 1.0,
+            "unit_disabled": 1.0,
+            "detected_penalty": 1.0,
+            "approach_objective": 1.0,
+            "spread_formation": 1.0,
+        }
+        
+        for name, weight in weight_map.items():
+            self.registry.set_weight(name, weight)
+        
+        # Handle detected penalty toggle
+        if not self.config.enable_detected_penalty:
+            self.registry.enable("detected_penalty", False)
     
     def calculate(
         self,
-        attackers: list[UnitState],
+        attackers: List[UnitState],
         step_info: StepInfo,
-        prev_distances: list[float],
+        prev_distances: List[float],
+        defenders: Optional[List[UnitState]] = None,
     ) -> tuple[float, dict]:
         """
         Calculate the reward for a step.
@@ -39,88 +87,49 @@ class RewardFunction:
             attackers: Current attacker states
             step_info: Information about what happened
             prev_distances: Previous distances to objective for each attacker
+            defenders: Optional defender states
         
         Returns:
-            Total reward and info dict
+            Total reward and info dict with component breakdown
         """
-        reward = 0.0
+        # Build context for reward calculation
+        ctx = RewardContext(
+            attackers=attackers,
+            defenders=defenders or [],
+            step_info=step_info,
+            prev_distances=prev_distances,
+            config=self.config,
+            objective=self.objective,
+        )
+        
+        # Calculate all reward components
+        results = self.registry.calculate_all(ctx)
+        
+        # Record in tracker
+        self.tracker.record_step(results, step_info)
+        
+        # Build info dict
         info = {}
+        for result in results:
+            if result.value != 0:
+                info[f"{result.component_name}_reward"] = result.value
         
-        # Capture progress reward
-        if step_info.capture_progress_delta > 0:
-            capture_reward = self.config.capture_progress * step_info.capture_progress_delta
-            reward += capture_reward
-            info["capture_reward"] = capture_reward
+        total_reward = self.registry.get_total(results)
+        info["total_reward"] = total_reward
         
-        # Win bonus
-        if step_info.won:
-            reward += self.config.win_bonus
-            info["win_bonus"] = self.config.win_bonus
+        # Add component breakdown for visualization
+        info["_component_breakdown"] = [
+            {
+                "name": r.component_name,
+                "value": r.value,
+                "category": r.category,
+            }
+            for r in results
+        ]
         
-        # Time penalty
-        reward += self.config.time_penalty
-        info["time_penalty"] = self.config.time_penalty
-        
-        # Collision penalty
-        if step_info.collisions > 0:
-            collision_penalty = self.config.collision_penalty * step_info.collisions
-            reward += collision_penalty
-            info["collision_penalty"] = collision_penalty
-        
-        # Integrity loss penalty
-        if step_info.integrity_lost > 0:
-            integrity_penalty = self.config.integrity_loss_penalty * step_info.integrity_lost
-            reward += integrity_penalty
-            info["integrity_penalty"] = integrity_penalty
-        
-        # Unit disabled penalty
-        if step_info.units_disabled > 0:
-            disabled_penalty = self.config.unit_disabled_penalty * step_info.units_disabled
-            reward += disabled_penalty
-            info["disabled_penalty"] = disabled_penalty
-        
-        # Detected penalty (optional)
-        if self.config.enable_detected_penalty and step_info.any_detected:
-            reward += self.config.detected_time_penalty
-            info["detected_penalty"] = self.config.detected_time_penalty
-        
-        # Shaping: approach objective
-        approach_reward = 0.0
-        for i, attacker in enumerate(attackers):
-            if attacker.is_disabled:
-                continue
-            curr_dist = math.sqrt(
-                (attacker.x - self.objective.x) ** 2 +
-                (attacker.y - self.objective.y) ** 2
-            )
-            if i < len(prev_distances):
-                dist_delta = prev_distances[i] - curr_dist
-                approach_reward += self.config.approach_objective * dist_delta
-        
-        if approach_reward != 0:
-            reward += approach_reward
-            info["approach_reward"] = approach_reward
-        
-        # Shaping: spread formation (encourage units to spread out)
-        spread_reward = 0.0
-        active_attackers = [a for a in attackers if not a.is_disabled]
-        if len(active_attackers) > 1:
-            min_pair_dist = float('inf')
-            for i, a1 in enumerate(active_attackers):
-                for a2 in active_attackers[i+1:]:
-                    dist = math.sqrt((a1.x - a2.x) ** 2 + (a1.y - a2.y) ** 2)
-                    min_pair_dist = min(min_pair_dist, dist)
-            
-            # Reward for keeping minimum distance > 5 meters
-            if min_pair_dist > 5.0:
-                spread_reward = self.config.spread_formation
-                reward += spread_reward
-                info["spread_reward"] = spread_reward
-        
-        info["total_reward"] = reward
-        return reward, info
+        return total_reward, info
     
-    def get_distances_to_objective(self, attackers: list[UnitState]) -> list[float]:
+    def get_distances_to_objective(self, attackers: List[UnitState]) -> List[float]:
         """Get distances from each attacker to the objective."""
         distances = []
         for attacker in attackers:
@@ -130,3 +139,43 @@ class RewardFunction:
             )
             distances.append(dist)
         return distances
+    
+    def end_episode(self) -> dict:
+        """End the current episode and return stats."""
+        stats = self.tracker.end_episode()
+        return stats.to_dict()
+    
+    def get_component_stats(self) -> dict:
+        """Get statistics for all reward components."""
+        return self.registry.get_statistics()
+    
+    def get_aggregate_stats(self) -> dict:
+        """Get aggregate statistics across all episodes."""
+        return self.tracker.get_aggregate_stats()
+    
+    def get_component_configs(self) -> list:
+        """Get configuration info for all components (for visualization)."""
+        return [
+            {
+                "name": comp.name,
+                "category": comp.category.value,
+                "color": comp.color,
+                "icon": comp.icon,
+                "description": comp.description,
+                "enabled": comp.enabled,
+                "weight": comp.weight,
+            }
+            for comp in self.registry
+        ]
+    
+    def register_component(self, component) -> None:
+        """Register a custom reward component."""
+        self.registry.register(component)
+    
+    def enable_component(self, name: str, enabled: bool = True) -> bool:
+        """Enable or disable a reward component."""
+        return self.registry.enable(name, enabled)
+    
+    def set_component_weight(self, name: str, weight: float) -> bool:
+        """Set the weight of a reward component."""
+        return self.registry.set_weight(name, weight)
