@@ -117,6 +117,12 @@ class HTMLMonitorCallback(BaseCallback):
         # Stored snapshots from eval callbacks
         self.stored_snapshots: List[Dict] = []
         
+        # Episode metrics tracking
+        self.episode_metrics_history: List[Dict] = []
+        self.wins = 0
+        self.total_episodes = 0
+        self.latest_metrics: Optional[Dict] = None
+        
         # Load config YAML files for display
         self.config_yaml = self._load_config_yamls()
     
@@ -206,6 +212,19 @@ class HTMLMonitorCallback(BaseCallback):
                 self.episode_lengths.append(self.current_episode_length)
                 self.episodes_completed += 1
                 
+                # Track episode metrics if available
+                if "episode_metrics" in info:
+                    metrics = info["episode_metrics"]
+                    self.latest_metrics = metrics
+                    self.total_episodes += 1
+                    if metrics.get("win", False):
+                        self.wins += 1
+                    
+                    # Store in history (keep last 100)
+                    self.episode_metrics_history.append(metrics)
+                    if len(self.episode_metrics_history) > 100:
+                        self.episode_metrics_history = self.episode_metrics_history[-100:]
+                
                 if len(self.episode_rewards) % 10 == 0:
                     mean_reward = np.mean(self.episode_rewards[-100:])
                     self.mean_rewards.append(mean_reward)
@@ -240,8 +259,11 @@ class HTMLMonitorCallback(BaseCallback):
         mean_reward_100 = np.mean(self.episode_rewards[-100:]) if self.episode_rewards else 0
         mean_length_100 = np.mean(self.episode_lengths[-100:]) if self.episode_lengths else 0
         
-        # Calculate win rate (rough estimate from positive rewards)
-        if self.episode_rewards:
+        # Calculate win rate from actual episode metrics
+        if self.total_episodes > 0:
+            win_rate = self.wins / self.total_episodes * 100
+        elif self.episode_rewards:
+            # Fallback: estimate from positive rewards
             positive_episodes = sum(1 for r in self.episode_rewards[-100:] if r > 50)
             win_rate = positive_episodes / min(100, len(self.episode_rewards)) * 100
         else:
@@ -388,6 +410,9 @@ class HTMLMonitorCallback(BaseCallback):
         
         # Build config HTML
         config_html = self._build_config_html()
+        
+        # Build episode metrics panel
+        metrics_html = self._build_episode_metrics_html()
         
         # Build recent episodes table
         recent_html = self._build_recent_episodes_html()
@@ -991,6 +1016,9 @@ class HTMLMonitorCallback(BaseCallback):
         <!-- Reward Components Breakdown -->
         {breakdown_html}
         
+        <!-- Episode Metrics -->
+        {metrics_html}
+        
         <!-- Recent Episodes -->
         {recent_html}
         
@@ -1235,6 +1263,87 @@ class HTMLMonitorCallback(BaseCallback):
             <div class="panel-body">
                 <div class="snapshot-grid">
                     {frames_html}
+                </div>
+            </div>
+        </div>'''
+    
+    def _build_episode_metrics_html(self) -> str:
+        """Build episode metrics panel HTML showing KPIs."""
+        if not self.episode_metrics_history:
+            return ""
+        
+        # Calculate aggregate stats from recent episodes
+        recent = self.episode_metrics_history[-20:]  # Last 20 episodes
+        
+        win_rate = (self.wins / self.total_episodes * 100) if self.total_episodes > 0 else 0
+        
+        # Aggregate metrics
+        avg_distance = sum(m.get("distance_total", 0) for m in recent) / len(recent)
+        avg_detected_pct = sum(m.get("detected_time_pct", 0) for m in recent) / len(recent)
+        avg_capture_progress = sum(m.get("final_capture_progress", 0) for m in recent) / len(recent)
+        total_collisions = sum(m.get("collisions_total", 0) for m in recent)
+        avg_tag_hit_rate = sum(m.get("tag_hit_rate_attacker", 0) for m in recent) / len(recent)
+        avg_zone_time = sum(m.get("time_in_objective_zone", 0) for m in recent) / len(recent)
+        
+        # Count termination reasons
+        reasons = {}
+        for m in recent:
+            reason = m.get("terminated_reason", "unknown")
+            reasons[reason] = reasons.get(reason, 0) + 1
+        
+        reason_badges = ""
+        for reason, count in reasons.items():
+            if reason == "captured":
+                badge_class = "badge-success"
+                icon = "🏆"
+            elif reason == "timeout":
+                badge_class = "badge-warning"
+                icon = "⏱️"
+            else:
+                badge_class = "badge-danger"
+                icon = "💔"
+            reason_badges += f'<span class="badge {badge_class}">{icon} {reason}: {count}</span> '
+        
+        return f'''
+        <div class="panel" style="margin-bottom: 2rem;">
+            <div class="panel-header">
+                <div class="panel-title"><span class="icon">📊</span> Episode Metrics (Last {len(recent)})</div>
+            </div>
+            <div class="panel-body">
+                <div class="metrics-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 1rem; margin-bottom: 1rem;">
+                    <div class="metric-card" style="background: var(--bg-card); padding: 1rem; border-radius: 8px; border-left: 3px solid var(--success);">
+                        <div style="color: var(--text-dim); font-size: 0.75rem; text-transform: uppercase; margin-bottom: 0.25rem;">Win Rate</div>
+                        <div style="font-size: 1.5rem; font-weight: 700; color: {'var(--success)' if win_rate > 50 else 'var(--warning)'};">{win_rate:.0f}%</div>
+                        <div style="color: var(--text-dim); font-size: 0.7rem;">{self.wins}/{self.total_episodes} episodes</div>
+                    </div>
+                    <div class="metric-card" style="background: var(--bg-card); padding: 1rem; border-radius: 8px; border-left: 3px solid var(--accent-teal);">
+                        <div style="color: var(--text-dim); font-size: 0.75rem; text-transform: uppercase; margin-bottom: 0.25rem;">Avg Capture Progress</div>
+                        <div style="font-size: 1.5rem; font-weight: 700; color: var(--accent-teal);">{avg_capture_progress:.1f}s</div>
+                    </div>
+                    <div class="metric-card" style="background: var(--bg-card); padding: 1rem; border-radius: 8px; border-left: 3px solid var(--accent-cyan);">
+                        <div style="color: var(--text-dim); font-size: 0.75rem; text-transform: uppercase; margin-bottom: 0.25rem;">Avg Zone Time</div>
+                        <div style="font-size: 1.5rem; font-weight: 700; color: var(--accent-cyan);">{avg_zone_time:.1f}s</div>
+                    </div>
+                    <div class="metric-card" style="background: var(--bg-card); padding: 1rem; border-radius: 8px; border-left: 3px solid var(--accent-purple);">
+                        <div style="color: var(--text-dim); font-size: 0.75rem; text-transform: uppercase; margin-bottom: 0.25rem;">Avg Distance</div>
+                        <div style="font-size: 1.5rem; font-weight: 700; color: var(--accent-purple);">{avg_distance:.0f}m</div>
+                    </div>
+                    <div class="metric-card" style="background: var(--bg-card); padding: 1rem; border-radius: 8px; border-left: 3px solid var(--warning);">
+                        <div style="color: var(--text-dim); font-size: 0.75rem; text-transform: uppercase; margin-bottom: 0.25rem;">Detected Time</div>
+                        <div style="font-size: 1.5rem; font-weight: 700; color: {'var(--danger)' if avg_detected_pct > 50 else 'var(--success)'};">{avg_detected_pct:.0f}%</div>
+                    </div>
+                    <div class="metric-card" style="background: var(--bg-card); padding: 1rem; border-radius: 8px; border-left: 3px solid var(--accent-orange);">
+                        <div style="color: var(--text-dim); font-size: 0.75rem; text-transform: uppercase; margin-bottom: 0.25rem;">Tag Hit Rate</div>
+                        <div style="font-size: 1.5rem; font-weight: 700; color: var(--accent-orange);">{avg_tag_hit_rate*100:.0f}%</div>
+                    </div>
+                    <div class="metric-card" style="background: var(--bg-card); padding: 1rem; border-radius: 8px; border-left: 3px solid var(--danger);">
+                        <div style="color: var(--text-dim); font-size: 0.75rem; text-transform: uppercase; margin-bottom: 0.25rem;">Collisions</div>
+                        <div style="font-size: 1.5rem; font-weight: 700; color: {'var(--danger)' if total_collisions > 10 else 'var(--text-primary)'};">{total_collisions}</div>
+                    </div>
+                </div>
+                <div style="margin-top: 1rem;">
+                    <span style="color: var(--text-dim); font-size: 0.75rem; margin-right: 0.5rem;">Outcomes:</span>
+                    {reason_badges}
                 </div>
             </div>
         </div>'''
@@ -1512,7 +1621,7 @@ class EvalWithMonitorCallback(BaseCallback):
 
 class MetricsCallback(BaseCallback):
     """
-    Callback that logs episode metrics to TensorBoard.
+    Callback that logs episode metrics to TensorBoard and prints beautiful console output.
     
     Logs key performance indicators from the EpisodeMetrics collected by the env:
     - Mission outcomes (win rate, time to capture)
@@ -1521,10 +1630,79 @@ class MetricsCallback(BaseCallback):
     - Fleet performance (distance, collisions)
     """
     
-    def __init__(self, verbose: int = 0):
+    # ANSI colors for console output
+    RESET = "\033[0m"
+    BOLD = "\033[1m"
+    DIM = "\033[2m"
+    GREEN = "\033[92m"
+    YELLOW = "\033[93m"
+    RED = "\033[91m"
+    CYAN = "\033[96m"
+    MAGENTA = "\033[95m"
+    BLUE = "\033[94m"
+    
+    def __init__(self, verbose: int = 0, print_freq: int = 10):
         super().__init__(verbose)
         self.episode_count = 0
         self.wins = 0
+        self.print_freq = print_freq
+        self.recent_metrics: List[Dict] = []
+        self.last_print_episode = 0
+    
+    def _colorize(self, text: str, *colors) -> str:
+        """Apply ANSI colors to text."""
+        color_str = "".join(colors)
+        return f"{color_str}{text}{self.RESET}"
+    
+    def _print_metrics_summary(self) -> None:
+        """Print a beautiful summary of recent metrics to console."""
+        if not self.recent_metrics:
+            return
+        
+        recent = self.recent_metrics[-self.print_freq:]
+        
+        # Calculate aggregates
+        wins = sum(1 for m in recent if m.get("win", False))
+        win_rate = wins / len(recent) * 100
+        avg_capture = sum(m.get("final_capture_progress", 0) for m in recent) / len(recent)
+        avg_distance = sum(m.get("distance_total", 0) for m in recent) / len(recent)
+        avg_detected = sum(m.get("detected_time_pct", 0) for m in recent) / len(recent)
+        total_collisions = sum(m.get("collisions_total", 0) for m in recent)
+        
+        # Termination reasons
+        reasons = {}
+        for m in recent:
+            r = m.get("terminated_reason", "?")
+            reasons[r] = reasons.get(r, 0) + 1
+        
+        # Build reason string
+        reason_parts = []
+        for r, count in reasons.items():
+            if r == "captured":
+                reason_parts.append(self._colorize(f"🏆{count}", self.GREEN))
+            elif r == "timeout":
+                reason_parts.append(self._colorize(f"⏱️{count}", self.YELLOW))
+            else:
+                reason_parts.append(self._colorize(f"💔{count}", self.RED))
+        reason_str = " ".join(reason_parts)
+        
+        # Color win rate
+        if win_rate >= 50:
+            wr_color = self.GREEN
+        elif win_rate >= 20:
+            wr_color = self.YELLOW
+        else:
+            wr_color = self.RED
+        
+        # Print summary
+        print()
+        print(f"  {self._colorize('─' * 60, self.DIM)}")
+        print(f"  {self._colorize('📊 METRICS', self.BOLD, self.CYAN)} {self._colorize(f'(Episodes {self.episode_count - len(recent) + 1}-{self.episode_count})', self.DIM)}")
+        print(f"  {self._colorize('─' * 60, self.DIM)}")
+        print(f"    {self._colorize('Win Rate:', self.BOLD)} {self._colorize(f'{win_rate:5.1f}%', wr_color)} ({wins}/{len(recent)})  {self._colorize('│', self.DIM)}  {self._colorize('Overall:', self.BOLD)} {self._colorize(f'{self.wins}/{self.episode_count}', self.CYAN)}")
+        print(f"    {self._colorize('Capture:', self.BOLD)}  {avg_capture:5.1f}s   {self._colorize('│', self.DIM)}  {self._colorize('Distance:', self.BOLD)} {avg_distance:6.0f}m  {self._colorize('│', self.DIM)}  {self._colorize('Detected:', self.BOLD)} {avg_detected:4.0f}%")
+        print(f"    {self._colorize('Outcomes:', self.BOLD)} {reason_str}  {self._colorize('│', self.DIM)}  {self._colorize('Collisions:', self.BOLD)} {total_collisions}")
+        print(f"  {self._colorize('─' * 60, self.DIM)}")
     
     def _on_step(self) -> bool:
         """Log metrics from completed episodes."""
@@ -1538,6 +1716,16 @@ class MetricsCallback(BaseCallback):
             self.episode_count += 1
             if metrics.get("win", False):
                 self.wins += 1
+            
+            # Store for console printing
+            self.recent_metrics.append(metrics)
+            if len(self.recent_metrics) > 100:
+                self.recent_metrics = self.recent_metrics[-100:]
+            
+            # Print summary every N episodes
+            if self.episode_count - self.last_print_episode >= self.print_freq:
+                self._print_metrics_summary()
+                self.last_print_episode = self.episode_count
             
             # Mission outcome KPIs
             self.logger.record("kpi/win", float(metrics.get("win", False)))
