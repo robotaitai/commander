@@ -32,6 +32,11 @@ def main():
     print("  ESC     : Quit")
     print()
     
+    # Initialize pygame BEFORE creating the environment
+    pygame.init()
+    pygame.display.set_mode((800, 800))
+    pygame.display.set_caption("Mission Gym - Manual Play")
+    
     # Create environment with rendering
     env = MissionGymEnv(render_mode="human")
     obs, info = env.reset(seed=42)
