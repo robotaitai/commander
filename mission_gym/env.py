@@ -260,6 +260,8 @@ class MissionGymEnv(gym.Env):
             units_disabled=newly_disabled,
             any_detected=any_detected,
             won=self.objective.is_captured,
+            tag_hits=self.engagement.stats.tag_hits_attacker,
+            defenders=self.defenders,
         )
         
         # Calculate reward
@@ -277,9 +279,13 @@ class MissionGymEnv(gym.Env):
             for a in self.attackers
         )
         
+        # Compute tag opportunities for diagnostics
+        tag_opportunities = self._count_tag_opportunities()
+        
         # Record step metrics (get stats from engagement system)
         self.metrics.record_step(
             attackers=self.attackers,
+            defenders=self.defenders,
             objective=self.objective,
             dt=dt * self.config.world.action_repeat,
             collisions=total_collisions,
@@ -287,6 +293,7 @@ class MissionGymEnv(gym.Env):
             units_disabled=newly_disabled,
             any_detected=any_detected,
             in_objective_zone=in_objective_zone,
+            tag_opportunities=tag_opportunities,
             tag_attempts_attacker=self.engagement.stats.tag_attempts_attacker,
             tag_hits_attacker=self.engagement.stats.tag_hits_attacker,
             tag_attempts_defender=self.engagement.stats.tag_attempts_defender,
@@ -516,6 +523,52 @@ class MissionGymEnv(gym.Env):
         features.append(capture_progress)
         
         return np.array(features, dtype=np.float32)
+    
+    def _count_tag_opportunities(self) -> int:
+        """
+        Count number of viable tag opportunities this step.
+        
+        Returns number of (attacker, defender) pairs where:
+        - Both units are not disabled
+        - Defender is within tag_range of attacker
+        - Defender is within tag_fov of attacker
+        - LOS exists (if required)
+        """
+        opportunities = 0
+        tag_range = self.config.engagement.tag_range
+        tag_fov = self.config.engagement.tag_fov
+        requires_los = self.config.engagement.tag_requires_los
+        
+        for attacker in self.attackers:
+            if attacker.is_disabled:
+                continue
+            
+            for defender in self.defenders:
+                if defender.is_disabled:
+                    continue
+                
+                # Check range
+                dist = attacker.distance_to(defender.x, defender.y)
+                if dist > tag_range:
+                    continue
+                
+                # Check FOV
+                rel_bearing = attacker.relative_bearing_to(defender.x, defender.y)
+                if abs(rel_bearing) > tag_fov:
+                    continue
+                
+                # Check LOS
+                if requires_los:
+                    has_los = self.backend.dynamics.check_line_of_sight(
+                        attacker.x, attacker.y, defender.x, defender.y,
+                        attacker.altitude, defender.altitude
+                    )
+                    if not has_los:
+                        continue
+                
+                opportunities += 1
+        
+        return opportunities
     
     def _get_info(self) -> dict:
         """Build info dictionary."""

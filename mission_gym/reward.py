@@ -5,7 +5,7 @@ This module provides backward-compatible access to the reward system while
 using the new component-based architecture under the hood.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Dict, List, Any, Optional
 import math
 
@@ -29,6 +29,8 @@ class StepInfo:
     units_disabled: int = 0
     any_detected: bool = False
     won: bool = False
+    tag_hits: int = 0  # Number of successful tag hits this step
+    defenders: List = field(default_factory=list)  # Defender unit states
 
 
 class RewardFunction:
@@ -70,6 +72,8 @@ class RewardFunction:
             "detected_penalty": 1.0,
             "approach_objective": 1.0,
             "spread_formation": 1.0,
+            "tag_hit_bonus": 1.0,  # Uses config.tag_hit_bonus
+            "defender_disabled_bonus": 1.0,  # Uses config.defender_disabled_bonus
         }
         
         for name, weight in weight_map.items():

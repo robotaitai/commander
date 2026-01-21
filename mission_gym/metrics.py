@@ -45,12 +45,16 @@ class EpisodeMetrics:
     detection_events: int = 0  # rising edges (newly detected)
     
     # Engagement stats (tag/disable mechanics)
+    tag_opportunities_attacker: int = 0  # timesteps where tag was possible
     tag_attempts_attacker: int = 0
     tag_hits_attacker: int = 0
     tag_attempts_defender: int = 0
     tag_hits_defender: int = 0
     disable_events: int = 0
     first_disable_time: Optional[float] = None
+    
+    # Distance metrics
+    avg_min_dist_to_defender: float = 0.0  # average minimum distance to any defender
     
     # Per-unit tracking
     distance_by_unit: List[float] = field(default_factory=list)
@@ -76,17 +80,27 @@ class EpisodeMetrics:
         d["detected_time"] = self.detected_time
         d["first_detect_time"] = self.first_detect_time
         d["detection_events"] = self.detection_events
+        d["tag_opportunities_attacker"] = self.tag_opportunities_attacker
         d["tag_attempts_attacker"] = self.tag_attempts_attacker
         d["tag_hits_attacker"] = self.tag_hits_attacker
         d["tag_attempts_defender"] = self.tag_attempts_defender
         d["tag_hits_defender"] = self.tag_hits_defender
         d["disable_events"] = self.disable_events
         d["first_disable_time"] = self.first_disable_time
+        d["avg_min_dist_to_defender"] = self.avg_min_dist_to_defender
         
         # Derived rates
+        d["tag_opportunity_rate_attacker"] = (
+            self.tag_opportunities_attacker / self.episode_steps
+            if self.episode_steps > 0 else 0.0
+        )
         d["tag_hit_rate_attacker"] = (
             self.tag_hits_attacker / self.tag_attempts_attacker
             if self.tag_attempts_attacker > 0 else 0.0
+        )
+        d["tag_conversion_rate_attacker"] = (
+            self.tag_hits_attacker / self.tag_opportunities_attacker
+            if self.tag_opportunities_attacker > 0 else 0.0
         )
         d["tag_hit_rate_defender"] = (
             self.tag_hits_defender / self.tag_attempts_defender
@@ -137,10 +151,13 @@ class MetricsTracker:
         self._prev_positions: Optional[List[tuple]] = None
         self._prev_any_detected: bool = False
         self._prev_integrities: Optional[List[float]] = None
+        self._min_dist_sum: float = 0.0
+        self._min_dist_count: int = 0
     
     def record_step(
         self,
         attackers: list,
+        defenders: list,
         objective,
         dt: float,
         collisions: int,
@@ -148,6 +165,7 @@ class MetricsTracker:
         units_disabled: int,
         any_detected: bool,
         in_objective_zone: bool,
+        tag_opportunities: int = 0,
         tag_attempts_attacker: int = 0,
         tag_hits_attacker: int = 0,
         tag_attempts_defender: int = 0,
@@ -201,10 +219,24 @@ class MetricsTracker:
         self._prev_any_detected = any_detected
         
         # Tag stats
+        self.ep.tag_opportunities_attacker += tag_opportunities
         self.ep.tag_attempts_attacker += tag_attempts_attacker
         self.ep.tag_hits_attacker += tag_hits_attacker
         self.ep.tag_attempts_defender += tag_attempts_defender
         self.ep.tag_hits_defender += tag_hits_defender
+        
+        # Distance to defenders (for diagnostics)
+        if defenders:
+            min_dist = float('inf')
+            for a in attackers:
+                if not a.is_disabled:
+                    for d in defenders:
+                        if not d.is_disabled:
+                            dist = math.hypot(a.x - d.x, a.y - d.y)
+                            min_dist = min(min_dist, dist)
+            if min_dist != float('inf'):
+                self._min_dist_sum += min_dist
+                self._min_dist_count += 1
         
         # Distance travelled per unit
         if self._prev_positions is None:
@@ -249,5 +281,9 @@ class MetricsTracker:
         # Count alive/disabled attackers at end
         self.ep.num_attackers_alive_end = sum(1 for a in attackers if not a.is_disabled)
         self.ep.num_attackers_disabled_total = sum(1 for a in attackers if a.is_disabled)
+        
+        # Compute average minimum distance to defender
+        if self._min_dist_count > 0:
+            self.ep.avg_min_dist_to_defender = self._min_dist_sum / self._min_dist_count
         
         return self.ep.to_dict()

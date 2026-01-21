@@ -21,6 +21,12 @@ weights:
   spread_formation: 0.005       # small reward for staying spread
   
   # ============================================================================
+  # ENGAGEMENT BONUSES (small rewards for combat success, mission-aligned)
+  # ============================================================================
+  tag_hit_bonus: 0.2            # per successful tag hit (only within 60m of objective)
+  defender_disabled_bonus: 10.0 # per defender disabled (only within 60m of objective)
+  
+  # ============================================================================
   # PENALTIES (keep small so they don't dominate early learning)
   # ============================================================================
   time_penalty: -0.001          # -1.2 per episode (was -12, way too high!)

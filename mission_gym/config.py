@@ -294,6 +294,10 @@ class RewardConfig:
     approach_objective: float
     spread_formation: float
     
+    # Engagement bonuses
+    tag_hit_bonus: float
+    defender_disabled_bonus: float
+    
     # Penalties
     time_penalty: float
     integrity_loss_penalty: float
@@ -324,6 +328,10 @@ class RewardConfig:
             ring_distances=data.get("ring_distances", [80, 60, 40, 25, 15]),
             approach_objective=weights.get("approach_objective", 0.0),  # Disabled by default
             spread_formation=weights.get("spread_formation", 0.005),
+            
+            # Engagement bonuses
+            tag_hit_bonus=weights.get("tag_hit_bonus", 0.2),
+            defender_disabled_bonus=weights.get("defender_disabled_bonus", 10.0),
             
             # Penalties
             time_penalty=weights.get("time_penalty", -0.001),

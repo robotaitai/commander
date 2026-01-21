@@ -269,6 +269,69 @@ class DetectedPenaltyReward(RewardComponent):
         return 0.0
 
 
+class TagHitBonus(RewardComponent):
+    """Small dense reward for successfully hitting with TAG action."""
+    name = "tag_hit_bonus"
+    category = RewardCategory.BONUS
+    color = "#a371f7"  # Purple
+    description = "Bonus for successful tag hits on defenders"
+    icon = "🎯"
+    
+    def calculate(self, ctx: RewardContext) -> float:
+        # Only reward if within 60m of objective (keep mission-aligned)
+        min_dist_to_obj = float('inf')
+        for a in ctx.attackers:
+            if not a.is_disabled:
+                dist = math.hypot(a.x - ctx.objective.x, a.y - ctx.objective.y)
+                min_dist_to_obj = min(min_dist_to_obj, dist)
+        
+        # Only pay reward if at least one unit is within range of objective
+        if min_dist_to_obj > 60.0:
+            return 0.0
+        
+        # Reward each tag hit
+        tag_hits = ctx.step_info.tag_hits
+        return ctx.config.tag_hit_bonus * tag_hits
+
+
+class DefenderDisabledBonus(RewardComponent):
+    """Event-based reward for disabling a defender unit."""
+    name = "defender_disabled_bonus"
+    category = RewardCategory.BONUS
+    color = "#a371f7"  # Purple
+    description = "One-time bonus for disabling defender units"
+    icon = "💀"
+    
+    def __init__(self, weight: float = 1.0, enabled: bool = True):
+        super().__init__(weight, enabled)
+        self._disabled_count = 0
+    
+    def reset_stats(self):
+        super().reset_stats()
+        self._disabled_count = 0
+    
+    def calculate(self, ctx: RewardContext) -> float:
+        # Only reward if within 60m of objective (keep mission-aligned)
+        min_dist_to_obj = float('inf')
+        for a in ctx.attackers:
+            if not a.is_disabled:
+                dist = math.hypot(a.x - ctx.objective.x, a.y - ctx.objective.y)
+                min_dist_to_obj = min(min_dist_to_obj, dist)
+        
+        # Only pay reward if at least one unit is within range of objective
+        if min_dist_to_obj > 60.0:
+            return 0.0
+        
+        # Count currently disabled defenders
+        current_disabled = sum(1 for d in ctx.step_info.defenders if d.is_disabled)
+        
+        # Reward for new disables only
+        new_disables = max(0, current_disabled - self._disabled_count)
+        self._disabled_count = current_disabled
+        
+        return ctx.config.defender_disabled_bonus * new_disables
+
+
 class ApproachObjectiveReward(RewardComponent):
     """Shaping reward for moving toward the objective."""
     name = "approach_objective"
@@ -604,6 +667,8 @@ def create_default_registry() -> RewardRegistry:
     registry.register(IntegrityLossPenaltyReward())
     registry.register(UnitDisabledPenaltyReward())
     registry.register(DetectedPenaltyReward())
+    registry.register(TagHitBonus())
+    registry.register(DefenderDisabledBonus())
     
     return registry
 
