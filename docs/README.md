@@ -51,6 +51,39 @@ python -m mission_gym.scripts.train_ppo \
   --load-checkpoint runs/my-run/checkpoints/ppo_mission_100000_steps.zip
 ```
 
+### Policy Branching and Lineage Tracking
+
+Mission Gym now supports **policy branching** - loading a parent checkpoint and creating a new training lineage with full compatibility tracking:
+
+```bash
+# Create a branch from an existing checkpoint
+python -m mission_gym.scripts.train_ppo \
+  --parent-checkpoint runs/baseline/checkpoints/ppo_mission_100000_steps.zip \
+  --branch-name explore-v2 \
+  --timesteps 500000 \
+  --notes "Testing new reward shaping"
+```
+
+**Features:**
+- **Lineage Tracking**: Every run saves `lineage.json` with parent info, git commit, config hash, and space signatures
+- **Compatibility Checking**: Automatically detects incompatible changes in observation/action spaces
+- **Run Naming**: Branch runs are named `<branch-name>-<timestamp>` (e.g., `explore-v2-20260122-143052`)
+
+**What changes are safe?**
+- ✅ Reward weights in `reward.yaml`
+- ✅ Enable/disable flags (e.g., `tag_enabled`, `scan_enabled`)
+- ✅ Physics parameters (speeds, turn rates)
+- ✅ Sensor configurations
+- ✅ Obstacle layouts
+
+**What breaks compatibility?**
+- ❌ Number of units in scenario (changes action space)
+- ❌ Number of observation features per unit (changes obs space)
+- ❌ Switching from vector to dict observations or vice versa
+- ❌ Adding/removing actions from unit types (changes action space)
+
+**Tip**: To disable TAG/SCAN without breaking compatibility, use the enable flags in `configs/engagement.yaml` instead of removing actions from unit configs.
+
 ### Evaluate Trained Model
 
 ```bash
@@ -71,12 +104,20 @@ python -m mission_gym.scripts.record_video \
 
 ### Environment
 
-- **Type**: Gymnasium environment with `Dict` observation space
-- **Observation**: 
-  - `bev`: (128, 128, 8) Bird's eye view raster
-  - `vec`: (42,) Vector features
+- **Type**: Gymnasium environment with `Box` observation space (vector-only)
+- **Observation**: `Box(shape=(42,), dtype=float32)` - Pure vector features (no images)
+  - Per-unit features (10 × 4 units = 40): position, heading (cos/sin), speed, integrity, cooldowns, altitude, disabled
+  - Global features (2): time_remaining, capture_progress
+  - **Note**: BEV rendering is available via `env.get_debug_bev()` for visualization only
 - **Action Space**: `MultiDiscrete([9, 9, 9, 9])` - One high-level action per unit
+- **Policy**: `MlpPolicy` (2-layer MLP, 256 units per layer)
 - **Episode Length**: 1200 steps (5 minutes simulation time)
+
+**Why Vector-Only?**
+- ✅ **10x faster training**: No CNN processing overhead
+- ✅ **Better for branching**: Smaller models, faster checkpoints
+- ✅ **Still has BEV**: Available for rendering and debugging via `env.get_debug_bev()`
+- ✅ **Simpler policy**: Pure MLP is easier to analyze and transfer
 
 ### Action Space (Simplified)
 

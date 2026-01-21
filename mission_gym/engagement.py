@@ -77,8 +77,12 @@ class EngagementSystem:
             targets: List of potential targets
         
         Returns:
-            TagResult if tag was attempted, None if on cooldown
+            TagResult if tag was attempted, None if on cooldown or disabled
         """
+        # Check if TAG is enabled
+        if not self.config.tag_enabled:
+            return None
+        
         if attacker.is_disabled:
             return None
         
@@ -167,8 +171,12 @@ class EngagementSystem:
         Start a scan action.
         
         Returns:
-            True if scan started, False if on cooldown
+            True if scan started, False if on cooldown or disabled
         """
+        # Check if SCAN is enabled
+        if not self.config.scan_enabled:
+            return False
+        
         if unit.is_disabled:
             return False
         

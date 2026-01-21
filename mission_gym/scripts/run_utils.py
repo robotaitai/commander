@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Utilities for managing training runs with proper naming and organization."""
 
+import hashlib
 import json
 import os
 import random
@@ -8,7 +9,7 @@ import shutil
 import subprocess
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Any
 
 # Two-word run name generator (adjective + noun, like Docker containers)
 ADJECTIVES = [
@@ -172,6 +173,218 @@ def get_nvidia_smi_info() -> Optional[Dict]:
         return None
     except Exception:
         return None
+
+
+# ============================================================================
+# Lineage Tracking and Compatibility Checking
+# ============================================================================
+
+def get_git_commit_hash() -> str:
+    """Get current git commit hash, or 'unknown' if not a git repo."""
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            cwd=Path(__file__).parent.parent.parent,  # Go to repo root
+        )
+        if result.returncode == 0:
+            return result.stdout.strip()
+    except:
+        pass
+    return "unknown"
+
+
+def compute_config_hash(config_dir: Path) -> str:
+    """Compute SHA256 hash of all config files in directory."""
+    hasher = hashlib.sha256()
+    
+    # Sort files for deterministic hash
+    yaml_files = sorted(config_dir.glob("*.yaml"))
+    
+    for yaml_file in yaml_files:
+        # Include filename in hash
+        hasher.update(yaml_file.name.encode())
+        # Include file contents
+        with open(yaml_file, "rb") as f:
+            hasher.update(f.read())
+    
+    return hasher.hexdigest()
+
+
+def obs_space_signature(space) -> Dict[str, Any]:
+    """Extract observation space signature for compatibility checking."""
+    from gymnasium import spaces
+    
+    if isinstance(space, spaces.Box):
+        return {
+            "type": "Box",
+            "shape": list(space.shape),
+            "dtype": str(space.dtype),
+            "low": float(space.low.flat[0]) if space.low.size > 0 else None,
+            "high": float(space.high.flat[0]) if space.high.size > 0 else None,
+        }
+    elif isinstance(space, spaces.Dict):
+        return {
+            "type": "Dict",
+            "spaces": {k: obs_space_signature(v) for k, v in space.spaces.items()},
+        }
+    elif isinstance(space, spaces.MultiDiscrete):
+        return {
+            "type": "MultiDiscrete",
+            "nvec": list(space.nvec),
+        }
+    else:
+        return {
+            "type": type(space).__name__,
+            "shape": getattr(space, "shape", None),
+        }
+
+
+def action_space_signature(space) -> Dict[str, Any]:
+    """Extract action space signature for compatibility checking."""
+    from gymnasium import spaces
+    
+    if isinstance(space, spaces.Discrete):
+        return {
+            "type": "Discrete",
+            "n": int(space.n),
+        }
+    elif isinstance(space, spaces.MultiDiscrete):
+        return {
+            "type": "MultiDiscrete",
+            "nvec": list(space.nvec),
+        }
+    elif isinstance(space, spaces.Box):
+        return {
+            "type": "Box",
+            "shape": list(space.shape),
+            "dtype": str(space.dtype),
+        }
+    else:
+        return {
+            "type": type(space).__name__,
+        }
+
+
+def save_lineage(
+    run_dir: Path,
+    parent_checkpoint: Optional[str] = None,
+    branch_name: Optional[str] = None,
+    notes: Optional[str] = None,
+    obs_space = None,
+    action_space = None,
+) -> None:
+    """Save lineage information for policy branching."""
+    lineage = {
+        "created_at": datetime.now().isoformat(),
+        "git_commit_hash": get_git_commit_hash(),
+        "config_hash": compute_config_hash(run_dir / "configs"),
+    }
+    
+    # Add parent information if loading from checkpoint
+    if parent_checkpoint:
+        parent_path = Path(parent_checkpoint)
+        lineage["parent_checkpoint_path"] = str(parent_checkpoint)
+        
+        # Try to extract parent run info from path
+        if "runs" in parent_path.parts:
+            runs_idx = parent_path.parts.index("runs")
+            if runs_idx + 1 < len(parent_path.parts):
+                parent_run_name = parent_path.parts[runs_idx + 1]
+                lineage["parent_run_name"] = parent_run_name
+                lineage["parent_run_dir"] = str(get_runs_dir() / parent_run_name)
+                
+                # Try to load parent's lineage if it exists
+                parent_lineage_path = get_runs_dir() / parent_run_name / "lineage.json"
+                if parent_lineage_path.exists():
+                    with open(parent_lineage_path, "r") as f:
+                        parent_lineage = json.load(f)
+                        lineage["parent_lineage"] = parent_lineage
+    
+    # Add branching metadata
+    if branch_name:
+        lineage["branch_name"] = branch_name
+    if notes:
+        lineage["notes"] = notes
+    
+    # Add space signatures
+    if obs_space:
+        lineage["obs_space_signature"] = obs_space_signature(obs_space)
+    if action_space:
+        lineage["action_space_signature"] = action_space_signature(action_space)
+    
+    # Save to lineage.json
+    with open(run_dir / "lineage.json", "w") as f:
+        json.dump(lineage, f, indent=2, default=str)
+    
+    # Also merge into run_metadata.json if it exists
+    metadata_path = run_dir / "run_metadata.json"
+    if metadata_path.exists():
+        with open(metadata_path, "r") as f:
+            metadata = json.load(f)
+        metadata["lineage"] = lineage
+        with open(metadata_path, "w") as f:
+            json.dump(metadata, f, indent=2, default=str)
+
+
+def check_checkpoint_compatibility(
+    checkpoint_path: str,
+    current_obs_space,
+    current_action_space,
+) -> Tuple[bool, Optional[str]]:
+    """Check if checkpoint is compatible with current environment.
+    
+    Returns:
+        (is_compatible, error_message)
+    """
+    checkpoint_path = Path(checkpoint_path)
+    
+    # Try to find parent run's lineage
+    if "runs" in checkpoint_path.parts:
+        runs_idx = checkpoint_path.parts.index("runs")
+        if runs_idx + 1 < len(checkpoint_path.parts):
+            parent_run_name = checkpoint_path.parts[runs_idx + 1]
+            parent_lineage_path = get_runs_dir() / parent_run_name / "lineage.json"
+            
+            if parent_lineage_path.exists():
+                with open(parent_lineage_path, "r") as f:
+                    parent_lineage = json.load(f)
+                
+                # Compare observation space
+                if "obs_space_signature" in parent_lineage:
+                    parent_obs_sig = parent_lineage["obs_space_signature"]
+                    current_obs_sig = obs_space_signature(current_obs_space)
+                    
+                    if parent_obs_sig != current_obs_sig:
+                        return False, (
+                            f"Observation space mismatch!\n"
+                            f"  Parent: {json.dumps(parent_obs_sig, indent=2)}\n"
+                            f"  Current: {json.dumps(current_obs_sig, indent=2)}\n"
+                            f"This usually means you changed:\n"
+                            f"  - Number of units in scenario\n"
+                            f"  - Observation features (vec_dim)\n"
+                            f"  - From Dict to Box or vice versa\n"
+                        )
+                
+                # Compare action space
+                if "action_space_signature" in parent_lineage:
+                    parent_act_sig = parent_lineage["action_space_signature"]
+                    current_act_sig = action_space_signature(current_action_space)
+                    
+                    if parent_act_sig != current_act_sig:
+                        return False, (
+                            f"Action space mismatch!\n"
+                            f"  Parent: {json.dumps(parent_act_sig, indent=2)}\n"
+                            f"  Current: {json.dumps(current_act_sig, indent=2)}\n"
+                            f"This usually means you changed:\n"
+                            f"  - Number of units\n"
+                            f"  - Number of actions per unit\n"
+                        )
+    
+    # If no lineage found or all checks passed
+    return True, None
 
 
 def save_rewards_history(

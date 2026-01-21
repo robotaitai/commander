@@ -65,7 +65,29 @@ def main():
         default=None,
         help="Path to checkpoint to resume training from (e.g., 'runs/my-run/checkpoints/ppo_mission_100000_steps.zip')",
     )
+    parser.add_argument(
+        "--parent-checkpoint",
+        type=str,
+        default=None,
+        help="Alias for --load-checkpoint. Loads parent checkpoint for policy branching.",
+    )
+    parser.add_argument(
+        "--branch-name",
+        type=str,
+        default=None,
+        help="Branch name for policy lineage (e.g., 'explore-v2'). Creates run name '<branch-name>-<timestamp>'",
+    )
+    parser.add_argument(
+        "--notes",
+        type=str,
+        default=None,
+        help="Notes about this training run (saved in lineage.json)",
+    )
     args = parser.parse_args()
+    
+    # Handle parent-checkpoint alias
+    if args.parent_checkpoint and not args.load_checkpoint:
+        args.load_checkpoint = args.parent_checkpoint
     
     # Import run utilities
     from mission_gym.scripts.run_utils import (
@@ -73,12 +95,26 @@ def main():
         print_banner, print_gpu_status, print_step, print_info, print_warning,
         print_error, print_success, print_divider, Colors, get_nvidia_smi_info,
         update_unified_dashboard, get_runs_dir,
+        save_lineage, check_checkpoint_compatibility,
     )
     
     c = Colors
     
+    # Determine run name (handle branching logic)
+    run_name_input = None
+    if args.branch_name and args.load_checkpoint:
+        # Branch mode: use branch name
+        run_name_input = args.branch_name
+    elif args.run_name:
+        # Custom run name
+        run_name_input = args.run_name
+    elif args.load_checkpoint and not args.branch_name:
+        # Loading checkpoint without explicit name - add "branch" prefix
+        run_name_input = "branch"
+    # Otherwise None - will auto-generate
+    
     # Create run directory
-    run_dir = create_run_dir(args.run_name)
+    run_dir = create_run_dir(run_name_input)
     run_name = run_dir.name
     
     # Print banner
@@ -217,14 +253,58 @@ def main():
     print_info("Metrics callback configured (TensorBoard KPIs)")
     print_info("Rich training logger configured")
     
-    # Create PPO model with MultiInputPolicy (CNN on BEV + MLP on vec)
+    # Save lineage and check compatibility
     print()
-    print_step(6, "Creating PPO model with MultiInputPolicy")
+    print_step(6, "Saving policy lineage and checking compatibility")
+    
+    # Get observation and action space signatures
+    test_env = envs.envs[0] if hasattr(envs, 'envs') else envs
+    obs_space = test_env.observation_space
+    action_space = test_env.action_space
+    
+    # Check compatibility if loading checkpoint
+    if args.load_checkpoint:
+        checkpoint_path_obj = Path(args.load_checkpoint)
+        if not checkpoint_path_obj.exists():
+            print_error(f"Checkpoint not found: {checkpoint_path_obj}")
+            return 1
+        
+        print_info(f"Checking checkpoint compatibility...")
+        is_compatible, error_msg = check_checkpoint_compatibility(
+            args.load_checkpoint,
+            obs_space,
+            action_space,
+        )
+        
+        if not is_compatible:
+            print_error(f"Checkpoint incompatibility detected!")
+            print_error(error_msg)
+            print_warning("To fix this, either:")
+            print_warning("  1. Revert config changes to match parent checkpoint")
+            print_warning("  2. Train a new policy from scratch (remove --load-checkpoint)")
+            return 1
+        
+        print_info("✓ Checkpoint is compatible")
+    
+    # Save lineage information
+    save_lineage(
+        run_dir=run_dir,
+        parent_checkpoint=args.load_checkpoint,
+        branch_name=args.branch_name,
+        notes=args.notes,
+        obs_space=obs_space,
+        action_space=action_space,
+    )
+    print_info(f"Lineage saved to {run_dir / 'lineage.json'}")
+    
+    # Create PPO model with MlpPolicy (vector-only observations)
+    print()
+    print_step(7, "Creating PPO model with MlpPolicy")
     try:
         tb_log = None if args.no_tensorboard else str(log_path)
         
         model = PPO(
-            "MultiInputPolicy",
+            "MlpPolicy",
             envs,
             verbose=0,  # Disabled - using RichTrainingCallback instead
             seed=args.seed,
@@ -240,13 +320,10 @@ def main():
             vf_coef=0.5,
             max_grad_norm=0.5,
             policy_kwargs={
-                "net_arch": {
-                    "pi": [256, 256],
-                    "vf": [256, 256],
-                },
+                "net_arch": [256, 256],  # Shared layers for pi and vf
             },
         )
-        print_info("PPO model created (verbose=0, Rich output enabled)")
+        print_info("PPO model created (MlpPolicy, vector-only obs)")
     except Exception as e:
         print_error(f"Model creation failed: {e}")
         import traceback
@@ -255,21 +332,17 @@ def main():
     
     # Load checkpoint if specified
     if args.load_checkpoint:
-        checkpoint_path = Path(args.load_checkpoint)
-        if not checkpoint_path.exists():
-            print_error(f"Checkpoint not found: {checkpoint_path}")
-            return 1
         print()
-        print_step(7, f"Loading checkpoint from {checkpoint_path}")
+        print_step(8, f"Loading parent checkpoint")
         try:
-            model = PPO.load(str(checkpoint_path), env=envs)
-            print_info(f"Checkpoint loaded successfully")
+            model = PPO.load(str(args.load_checkpoint), env=envs)
+            print_info(f"✓ Parent checkpoint loaded: {Path(args.load_checkpoint).name}")
             # Extract timesteps from checkpoint name if possible
-            checkpoint_name = checkpoint_path.stem
+            checkpoint_name = Path(args.load_checkpoint).stem
             if "_steps" in checkpoint_name:
                 try:
                     loaded_steps = int(checkpoint_name.split("_steps")[0].split("_")[-1])
-                    print_info(f"Checkpoint contains {loaded_steps:,} timesteps")
+                    print_info(f"  Parent trained for {loaded_steps:,} timesteps")
                 except:
                     pass
         except Exception as e:

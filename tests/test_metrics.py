@@ -297,7 +297,7 @@ class TestEnvMetricsIntegration:
         
         # Vector should have 10 features per attacker (including cos/sin heading) + 2 global
         expected_dim = env.num_attackers * 10 + 2
-        actual_dim = env.observation_space["vec"].shape[0]
+        actual_dim = env.observation_space.shape[0]
         
         assert actual_dim == expected_dim, f"Expected {expected_dim}, got {actual_dim}"
         

@@ -241,6 +241,10 @@ def load_sensors() -> dict[str, SensorConfig]:
 @dataclass
 class EngagementConfig:
     """Engagement (tag) configuration."""
+    # Enable/disable flags for checkpoint compatibility
+    tag_enabled: bool
+    scan_enabled: bool
+    # Tag beam configuration
     tag_range: float
     tag_optimal_range: float
     tag_fov: float
@@ -258,10 +262,13 @@ class EngagementConfig:
     @classmethod
     def from_yaml(cls) -> "EngagementConfig":
         data = load_yaml("engagement.yaml")
+        enable = data.get("enable", {})
         tag = data["tag_beam"]
         deg = tag["degradation"]
         scan = data["scan"]
         return cls(
+            tag_enabled=enable.get("tag", False),
+            scan_enabled=enable.get("scan", False),
             tag_range=tag["range"],
             tag_optimal_range=tag.get("optimal_range", tag["range"] * 0.5),
             tag_fov=tag["fov"],

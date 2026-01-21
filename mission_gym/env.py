@@ -121,19 +121,21 @@ class MissionGymEnv(gym.Env):
         
         self.action_space = spaces.MultiDiscrete(action_dims)
         
-        # Observation space
-        # BEV: 128x128x8 float32
-        bev_shape = (128, 128, 8)
-        
+        # Observation space: VECTOR ONLY (no BEV images for policy)
         # Vector: per-unit features + global features
         # Per unit: x, y, heading_cos, heading_sin, speed, integrity, tag_cd, scan_cd, altitude, disabled = 10
         # Global: time_remaining, capture_progress = 2
         vec_dim = self.num_attackers * 10 + 2
         
-        self.observation_space = spaces.Dict({
-            "bev": spaces.Box(low=0.0, high=1.0, shape=bev_shape, dtype=np.float32),
-            "vec": spaces.Box(low=-np.inf, high=np.inf, shape=(vec_dim,), dtype=np.float32),
-        })
+        self.observation_space = spaces.Box(
+            low=-np.inf,
+            high=np.inf,
+            shape=(vec_dim,),
+            dtype=np.float32
+        )
+        
+        # Store BEV shape for debug rendering (not part of observation)
+        self._bev_shape = (128, 128, 8)
     
     def reset(
         self,
@@ -388,11 +390,13 @@ class MissionGymEnv(gym.Env):
                     defender, self.config.engagement.scan_duration
                 )
     
-    def _get_observation(self) -> dict:
-        """Build observation dictionary."""
-        bev = self._render_bev()
-        vec = self._build_vector()
-        return {"bev": bev, "vec": vec}
+    def _get_observation(self) -> np.ndarray:
+        """Build observation vector (BEV not included for policy)."""
+        return self._build_vector()
+    
+    def get_debug_bev(self) -> np.ndarray:
+        """Generate BEV for debugging/rendering (not part of policy observation)."""
+        return self._render_bev()
     
     def _render_bev(self) -> np.ndarray:
         """Render bird's eye view raster."""

@@ -2,22 +2,9 @@
 
 ## Observation Space
 
-The environment uses a **Dict observation space** with two components:
+The environment uses a **Box observation space** (vector-only, no images):
 
-### 1. Bird's Eye View (BEV) - `bev`
-- **Shape**: `(128, 128, 8)` - 128×128 pixel raster with 8 channels
-- **Type**: `Box(0.0, 1.0, dtype=float32)`
-- **Channels**:
-  0. **Obstacles** - Static obstacles (buildings, rocks, trees)
-  1. **Objective Zone** - Target capture area (15m radius circle)
-  2. **Attackers** - Your units (friendly)
-  3. **Defenders** - Enemy units (patrolling)
-  4. **Attacker IDs** - Normalized unit IDs (0-1) for identification
-  5. **Defender FOV** - Detection zones around defenders (0.3 intensity)
-  6. **Tag Cooldown** - Heatmap showing cooldown status (0-1)
-  7. **Capture Progress** - Broadcast across entire map (0-1)
-
-### 2. Vector Features - `vec`
+### Vector Features - Observation
 - **Shape**: `(N,)` where `N = num_attackers × 10 + 2`
 - **Type**: `Box(-inf, inf, dtype=float32)`
 - **Per-Unit Features** (10 per attacker):
@@ -36,7 +23,30 @@ The environment uses a **Dict observation space** with two components:
   10. `time_remaining` - Normalized remaining time [0, 1]
   11. `capture_progress` - Objective capture progress [0, 1]
 
-**Example**: With 4 attackers → `vec` shape = `(4 × 10 + 2) = 42`
+**Example**: With 4 attackers → observation shape = `(4 × 10 + 2) = 42`
+
+### Bird's Eye View (BEV) - Debug/Visualization Only
+
+**Important**: BEV is **NOT part of the policy observation**. It's available via `env.get_debug_bev()` for rendering and debugging.
+
+- **Shape**: `(128, 128, 8)` - 128×128 pixel raster with 8 channels
+- **Type**: `Box(0.0, 1.0, dtype=float32)`
+- **Channels**:
+  0. **Obstacles** - Static obstacles (buildings, rocks, trees)
+  1. **Objective Zone** - Target capture area (15m radius circle)
+  2. **Attackers** - Your units (friendly)
+  3. **Defenders** - Enemy units (patrolling)
+  4. **Attacker IDs** - Normalized unit IDs (0-1) for identification
+  5. **Defender FOV** - Detection zones around defenders (0.3 intensity)
+  6. **Tag Cooldown** - Heatmap showing cooldown status (0-1)
+  7. **Capture Progress** - Broadcast across entire map (0-1)
+
+**Usage**:
+```python
+env = MissionGymEnv()
+obs, info = env.reset()  # obs is (42,) vector
+bev = env.get_debug_bev()  # Get BEV for visualization
+```
 
 ---
 

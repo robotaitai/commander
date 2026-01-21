@@ -29,12 +29,12 @@ class TestEnvironmentCreation:
         assert env.observation_space is not None
         env.close()
 
-    def test_observation_space_is_dict(self):
-        """Test observation space is a Dict space."""
+    def test_observation_space_is_box(self):
+        """Test observation space is a Box (vector-only)."""
         env = MissionGymEnv()
-        assert isinstance(env.observation_space, gym.spaces.Dict)
-        assert "bev" in env.observation_space.spaces
-        assert "vec" in env.observation_space.spaces
+        assert isinstance(env.observation_space, gym.spaces.Box)
+        assert len(env.observation_space.shape) == 1  # 1D vector
+        assert env.observation_space.shape[0] > 0  # Has features
         env.close()
 
 
@@ -46,26 +46,25 @@ class TestEnvironmentReset:
         env = MissionGymEnv()
         obs, info = env.reset()
         assert obs is not None
-        assert isinstance(obs, dict)
-        assert "bev" in obs
-        assert "vec" in obs
+        assert isinstance(obs, np.ndarray)
+        assert len(obs.shape) == 1  # 1D vector
+        assert obs.shape[0] == env.observation_space.shape[0]
         env.close()
-
+    
     def test_reset_returns_info(self):
         """Test reset returns info dictionary."""
         env = MissionGymEnv()
         obs, info = env.reset()
         assert isinstance(info, dict)
         env.close()
-
+    
     def test_reset_with_seed(self):
         """Test reset with seed for reproducibility."""
         env = MissionGymEnv()
         obs1, _ = env.reset(seed=42)
         obs2, _ = env.reset(seed=42)
         # With same seed, observations should be identical
-        np.testing.assert_array_equal(obs1["bev"], obs2["bev"])
-        np.testing.assert_array_equal(obs1["vec"], obs2["vec"])
+        np.testing.assert_array_equal(obs1, obs2)
         env.close()
 
 
