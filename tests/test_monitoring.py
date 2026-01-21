@@ -1,6 +1,7 @@
 """Tests for the training monitoring module."""
 
 import pytest
+import re
 import tempfile
 from pathlib import Path
 from datetime import datetime
@@ -84,3 +85,85 @@ class TestHTMLMonitorCallback:
             
             # Check for proper meta refresh format
             assert '<meta http-equiv="refresh" content="5">' in html
+
+    def test_dashboard_shows_run_name(self):
+        """Test that run name is displayed in dashboard."""
+        from mission_gym.scripts.monitoring import HTMLMonitorCallback
+        
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Create a run directory with a properly formatted name
+            run_name = "swift-falcon-20260121-143052"
+            run_dir = Path(tmpdir) / run_name
+            run_dir.mkdir(parents=True)
+            html_path = run_dir / "dashboard.html"
+            
+            callback = HTMLMonitorCallback(
+                html_path=str(html_path),
+                run_dir=run_dir,
+            )
+            callback.start_time = datetime.now()
+            callback.num_timesteps = 1000
+            
+            callback._generate_html()
+            html = html_path.read_text()
+            
+            # Run name should appear in header badge
+            assert 'run-badge' in html, "Dashboard should have run-badge element"
+            assert run_name in html, "Run name should appear in dashboard"
+            # Run name should appear in title
+            assert f'<title>{run_name}' in html, "Run name should be in page title"
+
+
+class TestRunNameGeneration:
+    """Test run name generation and format."""
+
+    def test_generate_run_name_format(self):
+        """Test auto-generated run name follows word-word-timestamp format."""
+        from mission_gym.scripts.run_utils import generate_run_name
+        
+        name = generate_run_name()
+        
+        # Should match pattern: word-word-YYYYMMDD-HHMMSS
+        pattern = r'^[a-z]+-[a-z]+-\d{8}-\d{6}$'
+        assert re.match(pattern, name), f"Run name '{name}' should match pattern word-word-timestamp"
+
+    def test_create_run_dir_with_custom_name_appends_timestamp(self):
+        """Test custom run names get timestamp appended."""
+        from mission_gym.scripts.run_utils import create_run_dir
+        
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Temporarily override runs directory
+            import mission_gym.scripts.run_utils as run_utils
+            original_get_runs_dir = run_utils.get_runs_dir
+            run_utils.get_runs_dir = lambda: Path(tmpdir)
+            
+            try:
+                run_dir = create_run_dir("my-experiment")
+                run_name = run_dir.name
+                
+                # Should start with custom prefix and end with timestamp
+                assert run_name.startswith("my-experiment-"), f"Run name should start with custom prefix"
+                # Should have timestamp at end (YYYYMMDD-HHMMSS)
+                pattern = r'^my-experiment-\d{8}-\d{6}$'
+                assert re.match(pattern, run_name), f"Run name '{run_name}' should have timestamp appended"
+            finally:
+                run_utils.get_runs_dir = original_get_runs_dir
+
+    def test_create_run_dir_auto_generates_name(self):
+        """Test auto-generated run name when no name provided."""
+        from mission_gym.scripts.run_utils import create_run_dir
+        
+        with tempfile.TemporaryDirectory() as tmpdir:
+            import mission_gym.scripts.run_utils as run_utils
+            original_get_runs_dir = run_utils.get_runs_dir
+            run_utils.get_runs_dir = lambda: Path(tmpdir)
+            
+            try:
+                run_dir = create_run_dir(None)
+                run_name = run_dir.name
+                
+                # Should match word-word-timestamp pattern
+                pattern = r'^[a-z]+-[a-z]+-\d{8}-\d{6}$'
+                assert re.match(pattern, run_name), f"Auto-generated name '{run_name}' should match pattern"
+            finally:
+                run_utils.get_runs_dir = original_get_runs_dir

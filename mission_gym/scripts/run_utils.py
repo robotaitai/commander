@@ -51,9 +51,17 @@ def get_runs_dir() -> Path:
 
 
 def create_run_dir(run_name: Optional[str] = None) -> Path:
-    """Create a new run directory with all needed subdirectories."""
+    """Create a new run directory with all needed subdirectories.
+    
+    If run_name is None, generates a name like 'swift-falcon-20260121-143052'.
+    If run_name is provided, appends timestamp like 'my-experiment-20260121-143052'.
+    """
+    timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
     if run_name is None:
         run_name = generate_run_name()
+    else:
+        # Append timestamp to custom names for uniqueness
+        run_name = f"{run_name}-{timestamp}"
     
     runs_dir = get_runs_dir()
     run_dir = runs_dir / run_name

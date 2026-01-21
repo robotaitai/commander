@@ -21,7 +21,7 @@ def main():
         "--run-name",
         type=str,
         default=None,
-        help="Custom run name (default: auto-generated like 'swift-falcon-20260121-143052')",
+        help="Custom run name prefix (timestamp auto-appended, e.g. 'my-run' → 'my-run-20260121-143052')",
     )
     parser.add_argument(
         "--n-envs",
