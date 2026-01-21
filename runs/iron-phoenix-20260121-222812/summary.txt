@@ -1,0 +1,19 @@
+Training Run Summary
+====================
+Run: iron-phoenix-20260121-222812
+Saved: 2026-01-21 23:40:25
+
+Episodes: 100
+Timesteps: 364,800
+
+Reward Statistics:
+  Mean:      -54.55 ± 38.25
+  Min:       -219.77
+  Max:       6.69
+  Final 100: -54.55
+  Final 10:  -54.38
+
+Improvement:
+  Early (first 10%):  -39.64
+  Late (last 10%):    -54.38
+  Improvement:        -14.74

@@ -1,0 +1,24 @@
+# Engagement (tag) configuration
+tag_beam:
+  range: 20.0             # max range (meters)
+  optimal_range: 8.0      # range for full damage
+  fov: 30.0               # degrees (cone half-angle)
+  requires_los: true      # blocked by obstacles
+  cooldown: 3.0           # seconds between tags
+  
+  # Damage settings
+  damage: 25.0            # damage at optimal range
+  min_damage: 10.0        # damage at max range (falloff)
+  # Damage scales linearly: full at optimal_range, min_damage at max range
+  
+  # Integrity thresholds for degradation
+  degradation:
+    mobility_threshold: 50.0    # below this, speed reduced by 50%
+    sensor_threshold: 30.0      # below this, sensor range reduced by 50%
+    disabled_threshold: 0.0     # at or below, unit is disabled
+
+# Scan action configuration
+scan:
+  duration: 0.5           # seconds
+  range_boost: 1.5        # multiplier on sensor ranges during scan
+  cooldown: 5.0           # seconds between scans

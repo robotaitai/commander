@@ -1686,8 +1686,20 @@ class HTMLMonitorCallback(BaseCallback):
             dones = entry.get("dones", [])
             
             # Format actions as colored badges per unit
+            # Handle both flat actions [a1, a2, a3, a4] and nested [[a1,a2,a3,a4], ...]
             action_badges = ""
-            for i, action in enumerate(actions):
+            flat_actions = actions
+            
+            # If actions is nested (from vectorized env), flatten first row
+            if actions and isinstance(actions[0], (list, tuple)):
+                flat_actions = actions[0] if len(actions) > 0 else []
+            
+            for i, action in enumerate(flat_actions):
+                # Handle if action is still a list/array
+                if isinstance(action, (list, tuple)):
+                    action = action[0] if action else 0
+                action = int(action)  # Ensure it's an int
+                
                 action_name = action_names.get(action, f"A{action}")
                 # Color code by action type
                 if action == 0:  # NOOP
@@ -1702,14 +1714,26 @@ class HTMLMonitorCallback(BaseCallback):
                     color = "var(--accent-orange)"
                 action_badges += f'<span class="action-badge" style="background: {color}20; color: {color}; border: 1px solid {color}40;">{action_name}</span>'
             
-            # Format rewards
-            total_reward = sum(rewards) if rewards else 0
+            # Format rewards - handle nested lists from vectorized envs
+            try:
+                if rewards and isinstance(rewards[0], (list, tuple)):
+                    total_reward = float(rewards[0][0]) if rewards[0] else 0
+                else:
+                    total_reward = sum(float(r) for r in rewards) if rewards else 0
+            except (TypeError, IndexError):
+                total_reward = 0
             reward_color = "var(--success)" if total_reward > 0 else ("var(--danger)" if total_reward < 0 else "var(--text-dim)")
             
-            # Check for episode end
+            # Check for episode end - handle nested lists
             done_marker = ""
-            if any(dones):
-                done_marker = '<span style="color: var(--warning); margin-left: 0.5rem;">🏁</span>'
+            try:
+                if dones:
+                    # Flatten if nested
+                    flat_dones = dones[0] if isinstance(dones[0], (list, tuple)) else dones
+                    if any(flat_dones):
+                        done_marker = '<span style="color: var(--warning); margin-left: 0.5rem;">🏁</span>'
+            except (TypeError, IndexError):
+                pass
             
             rows_html += f'''
                 <tr>
