@@ -106,6 +106,7 @@ class TestMetricsTracker:
         
         tracker.record_step(
             attackers=attackers,
+            defenders=[],
             objective=objective,
             dt=0.1,
             collisions=1,
@@ -146,6 +147,7 @@ class TestMetricsTracker:
         # First step - establishes initial position
         tracker.record_step(
             attackers=[MockUnit(0.0, 0.0, 100.0)],
+            defenders=[],
             objective=objective,
             dt=0.1,
             collisions=0,
@@ -158,6 +160,7 @@ class TestMetricsTracker:
         # Second step - unit moved 3-4-5 triangle (distance = 5)
         tracker.record_step(
             attackers=[MockUnit(3.0, 4.0, 100.0)],
+            defenders=[],
             objective=objective,
             dt=0.1,
             collisions=0,
@@ -191,19 +194,19 @@ class TestMetricsTracker:
         objective = MockObjective(0.0)
         
         # Not detected -> detected (should count)
-        tracker.record_step(attackers, objective, 0.1, 0, 0, 0, any_detected=True, in_objective_zone=False)
+        tracker.record_step(attackers, [], objective, 0.1, 0, 0, 0, any_detected=True, in_objective_zone=False)
         assert tracker.ep.detection_events == 1
         
         # Detected -> detected (should NOT count)
-        tracker.record_step(attackers, objective, 0.1, 0, 0, 0, any_detected=True, in_objective_zone=False)
+        tracker.record_step(attackers, [], objective, 0.1, 0, 0, 0, any_detected=True, in_objective_zone=False)
         assert tracker.ep.detection_events == 1
         
         # Detected -> not detected (should NOT count)
-        tracker.record_step(attackers, objective, 0.1, 0, 0, 0, any_detected=False, in_objective_zone=False)
+        tracker.record_step(attackers, [], objective, 0.1, 0, 0, 0, any_detected=False, in_objective_zone=False)
         assert tracker.ep.detection_events == 1
         
         # Not detected -> detected (should count again)
-        tracker.record_step(attackers, objective, 0.1, 0, 0, 0, any_detected=True, in_objective_zone=False)
+        tracker.record_step(attackers, [], objective, 0.1, 0, 0, 0, any_detected=True, in_objective_zone=False)
         assert tracker.ep.detection_events == 2
 
     def test_finish(self):

@@ -1,0 +1,19 @@
+Training Run Summary
+====================
+Run: teal-light-20260121-234255
+Saved: 2026-01-22 00:14:47
+
+Episodes: 100
+Timesteps: 153,600
+
+Reward Statistics:
+  Mean:      -66.42 ± 53.06
+  Min:       -307.15
+  Max:       21.75
+  Final 100: -66.42
+  Final 10:  -75.97
+
+Improvement:
+  Early (first 10%):  -53.81
+  Late (last 10%):    -75.97
+  Improvement:        -22.16
