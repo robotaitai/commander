@@ -4,8 +4,9 @@ Mission Gym is a game-like reinforcement learning environment for commanding a f
 
 ## 📚 Documentation Index
 
+- **[API & Continuation Rules](API_CONTINUATION_RULES.md)** - **START HERE** - Safe vs breaking config changes for policy branching
+- **[Observations and Actions](OBSERVATIONS_AND_ACTIONS.md)** - Complete API reference for observation space and action space
 - **[Policy Branching Guide](BRANCHING_GUIDE.md)** - Complete guide to policy branching, lineage tracking, and compatibility
-- **[Observations and Actions](OBSERVATIONS_AND_ACTIONS.md)** - Complete reference for observation space and action space
 - **[Instructions](Insructions.md)** - Original project specifications and requirements
 - **[Scenario View](scenario_view.png)** - Visual reference for the default scenario
 

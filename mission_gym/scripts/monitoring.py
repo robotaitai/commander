@@ -466,6 +466,9 @@ class HTMLMonitorCallback(BaseCallback):
         # Build action log panel
         action_log_html = self._build_action_log_html()
         
+        # Build policy continuation info panel
+        continuation_html = self._build_continuation_info_html()
+        
         return f'''<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -1092,6 +1095,9 @@ class HTMLMonitorCallback(BaseCallback):
         
         <!-- Action Log -->
         {action_log_html}
+        
+        <!-- Policy Continuation Info -->
+        {continuation_html}
         
         <!-- Configuration -->
         {config_html}
@@ -1793,6 +1799,73 @@ class HTMLMonitorCallback(BaseCallback):
                 font-weight: 500;
             }}
         </style>'''
+    
+    def _build_continuation_info_html(self) -> str:
+        """Build policy continuation information panel."""
+        return '''
+        <div class="panel" style="margin-bottom: 2rem;">
+            <div class="panel-header">
+                <div class="panel-title"><span class="icon">🌿</span> Policy Continuation Guide</div>
+            </div>
+            <div class="panel-body">
+                <div style="font-size: 0.9rem; line-height: 1.6;">
+                    <p style="margin-bottom: 1rem; color: var(--text-secondary);">
+                        Branch from this policy to continue training with modified configurations. 
+                        <a href="../docs/API_CONTINUATION_RULES.md" target="_blank" style="color: var(--primary); text-decoration: none;">📖 Full Documentation</a>
+                    </p>
+                    
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-bottom: 1.5rem;">
+                        <div>
+                            <div style="color: var(--success); font-weight: 600; margin-bottom: 0.5rem;">✅ Safe Changes (Won't Break Compatibility)</div>
+                            <ul style="margin: 0; padding-left: 1.5rem; color: var(--text-secondary); font-size: 0.85rem;">
+                                <li>Reward weights (<code>reward.yaml</code>)</li>
+                                <li>Enable/disable flags (<code>engagement.yaml</code>)</li>
+                                <li>Termination config (stagnation time)</li>
+                                <li>Physics parameters (speeds, turn rates)</li>
+                                <li>Sensor configs (ranges, FOV)</li>
+                                <li>Obstacle positions</li>
+                            </ul>
+                        </div>
+                        <div>
+                            <div style="color: var(--error); font-weight: 600; margin-bottom: 0.5rem;">❌ Breaking Changes (Will Fail)</div>
+                            <ul style="margin: 0; padding-left: 1.5rem; color: var(--text-secondary); font-size: 0.85rem;">
+                                <li>Number of units (changes obs/action space)</li>
+                                <li>Adding/removing actions from unit configs</li>
+                                <li>Changing observation features</li>
+                            </ul>
+                            <p style="margin-top: 0.5rem; font-size: 0.8rem; color: var(--warning);">
+                                💡 <strong>Tip:</strong> Use <code>enable.tag: false</code> instead of removing TAG action!
+                            </p>
+                        </div>
+                    </div>
+                    
+                    <div style="background: var(--bg-secondary); padding: 1rem; border-radius: 6px; border-left: 3px solid var(--primary);">
+                        <div style="font-weight: 600; margin-bottom: 0.5rem; color: var(--primary);">📝 Example: Branch from this policy</div>
+                        <div style="font-family: 'JetBrains Mono', monospace; font-size: 0.8rem; background: var(--bg); padding: 0.75rem; border-radius: 4px; margin-top: 0.5rem; overflow-x: auto;">
+                            <div style="color: #6A9955;"># 1. Modify config (e.g., increase zone bonus)</div>
+                            <div>vim configs/reward.yaml</div>
+                            <div style="margin-top: 0.5rem; color: #6A9955;"># 2. Branch from this policy</div>
+                            <div>python -m mission_gym.scripts.train_ppo \\</div>
+                            <div style="padding-left: 1rem;">--parent-checkpoint <span style="color: var(--warning);">[see "Resume Training" above]</span> \\</div>
+                            <div style="padding-left: 1rem;">--branch-name higher-zone-bonus \\</div>
+                            <div style="padding-left: 1rem;">--timesteps 500000 \\</div>
+                            <div style="padding-left: 1rem;">--notes "Increased zone_time to 5.0"</div>
+                        </div>
+                    </div>
+                    
+                    <div style="margin-top: 1rem; padding: 0.75rem; background: #2d3748; border-radius: 6px; border: 1px solid #4a5568;">
+                        <div style="font-size: 0.85rem; color: #e2e8f0;">
+                            <strong>📊 Episode Outcomes:</strong> This run tracks 5 termination types:
+                            <code style="margin-left: 0.5rem; padding: 0.15rem 0.4rem; background: var(--bg); border-radius: 3px;">captured</code>
+                            <code style="margin-left: 0.25rem; padding: 0.15rem 0.4rem; background: var(--bg); border-radius: 3px;">early_success</code>
+                            <code style="margin-left: 0.25rem; padding: 0.15rem 0.4rem; background: var(--bg); border-radius: 3px;">stalled</code>
+                            <code style="margin-left: 0.25rem; padding: 0.15rem 0.4rem; background: var(--bg); border-radius: 3px;">all_disabled</code>
+                            <code style="margin-left: 0.25rem; padding: 0.15rem 0.4rem; background: var(--bg); border-radius: 3px;">timeout</code>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>'''
     
     def _build_config_html(self) -> str:
         """Build configuration viewer HTML."""

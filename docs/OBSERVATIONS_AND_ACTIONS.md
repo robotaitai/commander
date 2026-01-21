@@ -1,4 +1,11 @@
-# Mission Gym: Observations and Actions
+# Mission Gym: Observations and Actions API
+
+**Last Updated**: 2026-01-22  
+**Version**: Vector-only observations (MlpPolicy)
+
+This document defines the **stable API** for Mission Gym. Changes to observation or action spaces will break checkpoint compatibility and require retraining from scratch.
+
+---
 
 ## Observation Space
 
@@ -7,23 +14,32 @@ The environment uses a **Box observation space** (vector-only, no images):
 ### Vector Features - Observation
 - **Shape**: `(N,)` where `N = num_attackers × 10 + 2`
 - **Type**: `Box(-inf, inf, dtype=float32)`
-- **Per-Unit Features** (10 per attacker):
-  0. `x` - Normalized X position [0, 1]
-  1. `y` - Normalized Y position [0, 1]
-  2. `heading_cos` - Heading cosine component [-1, 1]
-  3. `heading_sin` - Heading sine component [-1, 1]
-  4. `speed` - Normalized speed [0, 1] (max ~15 m/s)
-  5. `integrity` - Health normalized [0, 1] (max 100)
-  6. `tag_cooldown` - Cooldown progress [0, 1]
-  7. `scan_cooldown` - Scan cooldown progress [0, 1]
-  8. `altitude` - Altitude band normalized [0, 1] (for UAVs)
-  9. `disabled` - Binary flag [0, 1]
+- **Normalization**: All features normalized to reasonable ranges for neural network training
 
-- **Global Features** (2):
-  10. `time_remaining` - Normalized remaining time [0, 1]
-  11. `capture_progress` - Objective capture progress [0, 1]
+**Per-Unit Features** (10 per attacker):
+| Index | Feature | Range | Description |
+|-------|---------|-------|-------------|
+| 0 | `x` | [0, 1] | X position normalized to arena width |
+| 1 | `y` | [0, 1] | Y position normalized to arena height |
+| 2 | `heading_cos` | [-1, 1] | Cosine of heading angle |
+| 3 | `heading_sin` | [-1, 1] | Sine of heading angle |
+| 4 | `speed` | [0, 1] | Current speed normalized to max_speed |
+| 5 | `integrity` | [0, 1] | Health normalized to initial_integrity |
+| 6 | `tag_cooldown` | [0, 1] | TAG cooldown progress (0=ready, 1=cooling) |
+| 7 | `scan_cooldown` | [0, 1] | SCAN cooldown progress (0=ready, 1=cooling) |
+| 8 | `altitude` | [0, 1] | Altitude band (UAVs only, UGVs always 0) |
+| 9 | `disabled` | [0, 1] | Unit disabled flag (0=active, 1=disabled) |
 
-**Example**: With 4 attackers → observation shape = `(4 × 10 + 2) = 42`
+**Global Features** (2):
+| Index | Feature | Range | Description |
+|-------|---------|-------|-------------|
+| 10 | `time_remaining` | [0, 1] | Remaining episode time normalized to max_duration |
+| 11 | `capture_progress` | [0, 1] | Objective capture progress (normalized to capture_time_required) |
+
+**Example**: Default scenario with 4 attackers → observation shape = `(4 × 10 + 2) = 42`
+
+### ⚠️ Compatibility Note
+Changing the number of attackers in `scenario.yaml` will change observation shape and **break checkpoint compatibility**.
 
 ### Bird's Eye View (BEV) - Debug/Visualization Only
 
@@ -112,13 +128,54 @@ action = np.array([0, 0, 0, 0])  # All units STOP
 
 ---
 
-## Example Observation
+## Episode Outcomes
+
+Episodes can end in 5 ways, tracked in `info["outcome"]`:
+
+| Outcome | `terminated` | `truncated` | Description |
+|---------|--------------|-------------|-------------|
+| `"captured"` | True | False | Objective fully captured (20s in zone) |
+| `"early_success"` | True | False | Early success threshold reached |
+| `"stalled"` | False | True | No progress for 30s (configurable) |
+| `"all_disabled"` | False | True | All attackers disabled |
+| `"timeout"` | False | True | Max duration reached (300s) |
+
+See [API_CONTINUATION_RULES.md](API_CONTINUATION_RULES.md) for details on early termination and stagnation detection.
+
+---
+
+## Example Usage
 
 ```python
-obs = {
-    'bev': np.array(shape=(128, 128, 8), dtype=float32),  # Raster map
-    'vec': np.array(shape=(42,), dtype=float32)           # Vector features
-}
+import numpy as np
+from mission_gym.env import MissionGymEnv
+
+# Create environment
+env = MissionGymEnv()
+
+# Reset - returns vector observation
+obs, info = env.reset()
+print(obs.shape)  # (42,) for 4 attackers
+
+# Access features
+unit0_x = obs[0]           # Unit 0 X position
+unit0_y = obs[1]           # Unit 0 Y position
+time_remaining = obs[40]   # Global: time remaining
+capture_progress = obs[41] # Global: capture progress
+
+# Take action (all units move EAST)
+action = np.array([3, 3, 3, 3], dtype=np.int32)
+obs, reward, terminated, truncated, info = env.step(action)
+
+# Check episode outcome
+if terminated or truncated:
+    outcome = info["outcome"]
+    print(f"Episode ended: {outcome}")
+
+# Get BEV for visualization (not part of policy obs)
+bev = env.get_debug_bev()  # (128, 128, 8)
+
+env.close()
 ```
 
 ---
@@ -126,7 +183,14 @@ obs = {
 ## Key Details
 
 - **Action Repeat**: Actions are executed for 5 physics steps (4 Hz command rate)
-- **Episode Length**: 1200 steps = 300 seconds (5 minutes)
+- **Episode Length**: Up to 1200 steps = 300 seconds (may end early via stagnation)
 - **World Size**: 200m × 200m
 - **Objective**: Circle at (100, 100) with 15m radius
 - **Capture Time**: 20 seconds cumulative presence required to win
+- **Stagnation**: Episodes end early if no progress for 30s (configurable)
+
+---
+
+## Policy Continuation
+
+For information on safe vs. breaking configuration changes when branching policies, see [API_CONTINUATION_RULES.md](API_CONTINUATION_RULES.md).
