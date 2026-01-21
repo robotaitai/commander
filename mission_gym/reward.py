@@ -150,6 +150,14 @@ class RewardFunction:
             distances.append(dist)
         return distances
     
+    def reset(self) -> None:
+        """Reset all reward components for a new episode.
+        
+        This is important for stateful components like MinDistanceToObjectiveReward
+        that track state across steps within an episode.
+        """
+        self.registry.reset_all_stats()
+    
     def end_episode(self) -> dict:
         """End the current episode and return stats."""
         stats = self.tracker.end_episode()

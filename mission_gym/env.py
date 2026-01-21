@@ -168,6 +168,9 @@ class MissionGymEnv(gym.Env):
         self.prev_distances = self.reward_fn.get_distances_to_objective(self.attackers)
         self.last_actions = ["---"] * len(self.attackers)  # Initialize command display
         
+        # Reset reward components (important for stateful components like min_dist_potential)
+        self.reward_fn.reset()
+        
         # Reset metrics tracker
         if self.metrics is None:
             self.metrics = MetricsTracker(len(self.attackers))

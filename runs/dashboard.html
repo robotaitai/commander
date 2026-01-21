@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <!-- No meta refresh - using JS to refresh iframe without scroll jump -->
+    <title>Mission Gym - All Runs Dashboard</title>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Space+Grotesk:wght@400;500;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-dark: #0a0e14;
+            --bg-panel: #111820;
+            --bg-card: #171f2a;
+            --border: #2a3544;
+            --accent-teal: #00d4aa;
+            --accent-cyan: #00bfff;
+            --text-primary: #e6edf3;
+            --text-secondary: #7d8590;
+            --glow-teal: rgba(0, 212, 170, 0.3);
+        }
+        
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        
+        body {
+            font-family: 'Space Grotesk', system-ui, sans-serif;
+            background: var(--bg-dark);
+            color: var(--text-primary);
+            min-height: 100vh;
+        }
+        
+        .header {
+            background: var(--bg-panel);
+            border-bottom: 1px solid var(--border);
+            padding: 1rem 2rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            z-index: 100;
+        }
+        
+        .logo {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: var(--accent-teal);
+            text-shadow: 0 0 20px var(--glow-teal);
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        
+        .run-selector {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+        
+        .run-selector label {
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+        }
+        
+        .run-selector select {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 0.5rem 1rem;
+            color: var(--text-primary);
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.85rem;
+            min-width: 400px;
+            cursor: pointer;
+        }
+        
+        .run-selector select:hover {
+            border-color: var(--accent-teal);
+        }
+        
+        .run-selector select:focus {
+            outline: none;
+            border-color: var(--accent-teal);
+            box-shadow: 0 0 0 2px var(--glow-teal);
+        }
+        
+        .run-count {
+            background: var(--bg-card);
+            border: 1px solid var(--accent-teal);
+            border-radius: 20px;
+            padding: 0.25rem 0.75rem;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.8rem;
+            color: var(--accent-teal);
+        }
+        
+        .dashboard-frame {
+            border: none;
+            width: 100%;
+            height: calc(100vh - 60px);
+            margin-top: 60px;
+        }
+        
+        .no-runs {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: calc(100vh - 60px);
+            margin-top: 60px;
+            color: var(--text-secondary);
+        }
+        
+        .no-runs-icon {
+            font-size: 4rem;
+            margin-bottom: 1rem;
+        }
+        
+        .no-runs-text {
+            font-size: 1.2rem;
+        }
+        
+        .no-runs-hint {
+            font-size: 0.9rem;
+            margin-top: 0.5rem;
+            color: var(--text-secondary);
+            opacity: 0.7;
+        }
+    </style>
+</head>
+<body>
+    <header class="header">
+        <div class="logo">
+            <span>🎮</span>
+            <span>MISSION GYM</span>
+        </div>
+        <div class="run-selector">
+            <label for="run-select">Select Run:</label>
+            <select id="run-select" onchange="loadRun(this.value)">
+                <option value="iron-phoenix-20260121-222812/dashboard.html" selected>iron-phoenix-20260121-222812 (2026-01-21 22:28:14, 500,000 steps)</option>
+
+            </select>
+            <span class="run-count">1 runs</span>
+        </div>
+    </header>
+    
+    <iframe class='dashboard-frame' id='dashboard-frame' src='iron-phoenix-20260121-222812/dashboard.html'></iframe>
+    
+    <script>
+        function loadRun(path) {
+            const frame = document.getElementById('dashboard-frame');
+            if (frame) {
+                frame.src = path;
+            }
+        }
+        
+        // NO auto-refresh of parent page!
+        // Each run's dashboard inside the iframe has its own refresh.
+        // This prevents scroll jumping and double-refreshes.
+        
+        // Store the currently selected run in localStorage
+        const select = document.getElementById('run-select');
+        if (select) {
+            const saved = localStorage.getItem('selectedRun');
+            if (saved) {
+                for (let option of select.options) {
+                    if (option.value === saved) {
+                        select.value = saved;
+                        loadRun(saved);
+                        break;
+                    }
+                }
+            }
+            select.addEventListener('change', function() {
+                localStorage.setItem('selectedRun', this.value);
+            });
+        }
+    </script>
+</body>
+</html>
