@@ -59,6 +59,12 @@ def main():
         action="store_true",
         help="Disable tensorboard logging",
     )
+    parser.add_argument(
+        "--load-checkpoint",
+        type=str,
+        default=None,
+        help="Path to checkpoint to resume training from (e.g., 'runs/my-run/checkpoints/ppo_mission_100000_steps.zip')",
+    )
     args = parser.parse_args()
     
     # Import run utilities
@@ -246,6 +252,31 @@ def main():
         import traceback
         traceback.print_exc()
         return 1
+    
+    # Load checkpoint if specified
+    if args.load_checkpoint:
+        checkpoint_path = Path(args.load_checkpoint)
+        if not checkpoint_path.exists():
+            print_error(f"Checkpoint not found: {checkpoint_path}")
+            return 1
+        print()
+        print_step(7, f"Loading checkpoint from {checkpoint_path}")
+        try:
+            model = PPO.load(str(checkpoint_path), env=envs)
+            print_info(f"Checkpoint loaded successfully")
+            # Extract timesteps from checkpoint name if possible
+            checkpoint_name = checkpoint_path.stem
+            if "_steps" in checkpoint_name:
+                try:
+                    loaded_steps = int(checkpoint_name.split("_steps")[0].split("_")[-1])
+                    print_info(f"Checkpoint contains {loaded_steps:,} timesteps")
+                except:
+                    pass
+        except Exception as e:
+            print_error(f"Failed to load checkpoint: {e}")
+            import traceback
+            traceback.print_exc()
+            return 1
     
     # Training info
     print()

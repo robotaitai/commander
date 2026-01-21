@@ -1526,6 +1526,17 @@ class HTMLMonitorCallback(BaseCallback):
         checkpoint_path = f"{run_path}/checkpoints"
         logs_path = f"{run_path}/logs"
         
+        # Try to find latest checkpoint
+        latest_checkpoint = None
+        if self.run_dir:
+            checkpoint_dir = self.run_dir / "checkpoints"
+            if checkpoint_dir.exists():
+                checkpoints = list(checkpoint_dir.glob("ppo_mission_*.zip"))
+                if checkpoints:
+                    # Sort by modification time, get latest
+                    latest_checkpoint = max(checkpoints, key=lambda p: p.stat().st_mtime)
+                    latest_checkpoint = str(latest_checkpoint)
+        
         commands = [
             {
                 "name": "🎮 Evaluate Model",
@@ -1553,9 +1564,14 @@ class HTMLMonitorCallback(BaseCallback):
                 "cmd": f"ls -la {checkpoint_path}",
             },
             {
+                "name": "🔄 Resume Training",
+                "desc": "Resume training from latest checkpoint" + (f" ({Path(latest_checkpoint).name})" if latest_checkpoint else " (no checkpoints found)"),
+                "cmd": f"python -m mission_gym.scripts.train_ppo --timesteps 500000 --load-checkpoint {latest_checkpoint}" if latest_checkpoint else f"python -m mission_gym.scripts.train_ppo --timesteps 500000 --load-checkpoint {checkpoint_path}/ppo_mission_XXXXX_steps.zip",
+            },
+            {
                 "name": "🚀 Continue Training",
-                "desc": "Resume training from this model",
-                "cmd": f"python -m mission_gym.scripts.train_ppo --timesteps 100000 --run-name {run_name}-continued",
+                "desc": "Start new training run (fresh model)",
+                "cmd": f"python -m mission_gym.scripts.train_ppo --timesteps 500000 --run-name {run_name}-continued",
             },
         ]
         
