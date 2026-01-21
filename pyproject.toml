@@ -1,0 +1,40 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mission_gym"
+version = "0.1.0"
+description = "A game-like reinforcement learning environment for commanding a fleet to capture an objective zone"
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+authors = [
+    {name = "Mission Gym Team"}
+]
+dependencies = [
+    "gymnasium>=0.29.0",
+    "numpy>=1.24.0",
+    "pyyaml>=6.0",
+    "stable-baselines3>=2.0.0",
+    "torch>=2.0.0",
+    "pygame>=2.5.0",
+    "shapely>=2.0.0",
+    "tensorboard>=2.10.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-cov>=4.0.0",
+]
+monitoring = [
+    "wandb>=0.15.0",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["mission_gym*"]
+
+[tool.setuptools.package-data]
+mission_gym = ["../configs/*.yaml"]

@@ -1,22 +1,49 @@
 # Mission Gym
 
-A game-like reinforcement learning environment for commanding a fleet to capture an objective zone while defenders try to tag/disable units.
+A game-like reinforcement learning environment for commanding a fleet of attackers to capture an objective zone while scripted defenders try to tag/disable units.
+
+![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)
+![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)
+
+## Features
+
+- **Multi-unit control**: Centralized single-policy control over multiple attacker units
+- **MultiDiscrete action space**: Per-unit atomic commands (THROTTLE, TURN, TAG, etc.)
+- **Rich observations**: Bird's-eye-view raster + vector features
+- **Configurable scenarios**: YAML-based configuration for world, units, sensors, engagement, rewards
+- **Scripted defenders**: AI-controlled defenders with patrol and pursuit behaviors
+- **Training monitoring**: HTML dashboard with real-time stats and simulation snapshots
+- **Backend abstraction**: Pluggable physics backends (Simple2.5D, Isaac Sim stub, MuJoCo stub)
+
+---
 
 ## Installation
 
+### From Source (Recommended)
+
 ```bash
+git clone <repo-url>
+cd comander
 pip install -e .
 ```
 
-Or install dependencies directly:
+### Dependencies Only
 
 ```bash
-pip install gymnasium numpy pyyaml stable-baselines3 torch pygame shapely tensorboard
+pip install gymnasium numpy pyyaml stable-baselines3 torch pygame shapely tensorboard imageio imageio-ffmpeg
 ```
+
+### Development Installation
+
+```bash
+pip install -e ".[dev]"
+```
+
+---
 
 ## Quick Start
 
-### Smoke Test
+### 1. Smoke Test
 
 Verify the environment works correctly:
 
@@ -24,7 +51,22 @@ Verify the environment works correctly:
 python -m mission_gym.scripts.smoke_test
 ```
 
-### Manual Play
+### 2. View Scenario
+
+Visualize the current scenario configuration:
+
+```bash
+python -m mission_gym.scripts.view_scenario
+```
+
+This shows a Pygame window with:
+- Unit spawn positions and headings
+- Obstacles and forest areas
+- Objective zone
+- Defender patrol waypoints
+- Range circles (max/optimal tag range)
+
+### 3. Manual Play
 
 Play the game manually with keyboard controls:
 
@@ -33,88 +75,106 @@ python -m mission_gym.scripts.play_manual
 ```
 
 **Controls:**
-- `1-4`: Select attacker unit
-- `W/S`: Throttle up/down
-- `A/D`: Turn left/right
-- `SPACE`: Brake
-- `H`: Hold position
-- `T`: Tag (attempt to disable nearby defender)
-- `E`: Scan
-- `R/F`: Altitude up/down (UAV only)
-- `ESC`: Quit
+| Key | Action |
+|-----|--------|
+| `1-4` | Select attacker unit |
+| `W/S` | Throttle up/down |
+| `A/D` | Turn left/right |
+| `SPACE` | Brake |
+| `H` | Hold position |
+| `T` | Tag (attempt to disable nearby defender) |
+| `E` | Scan |
+| `R/F` | Altitude up/down (UAV only) |
+| `ESC` | Quit |
 
 ---
 
-## Training with Monitoring
+## Training
 
-### Start Training with HTML Dashboard
+### Basic Training
 
 ```bash
 python -m mission_gym.scripts.train_ppo --timesteps 500000
 ```
 
-This will create:
-1. **HTML Dashboard** (`training_dashboard.html`) - Open in browser, auto-refreshes every 30s
+This creates:
+1. **HTML Dashboard** (`training_dashboard.html`) - Auto-refreshes every 30s
 2. **TensorBoard logs** (`./logs/`) - For detailed metrics
+3. **Checkpoints** (`./logs/checkpoints/`) - Periodic model saves
 
-### Monitoring Options
+### Training with Options
 
-#### Option 1: HTML Dashboard (Recommended for quick monitoring)
+```bash
+python -m mission_gym.scripts.train_ppo \
+  --timesteps 500000 \
+  --n-envs 8 \
+  --eval-freq 10000 \
+  --html-dashboard my_dashboard.html \
+  --save-path my_model \
+  --log-dir ./my_logs
+```
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `--timesteps` | Total training steps | 100000 |
+| `--n-envs` | Parallel environments | 4 |
+| `--eval-freq` | Evaluation frequency | 10000 |
+| `--html-dashboard` | Dashboard HTML path | training_dashboard.html |
+| `--save-path` | Model save path | ppo_mission_gym |
+| `--log-dir` | TensorBoard log directory | ./logs |
+
+---
+
+## Monitoring
+
+### Option 1: HTML Dashboard (Recommended)
 
 The HTML dashboard is automatically generated during training:
 
 ```bash
-# Start training
-python -m mission_gym.scripts.train_ppo --html-dashboard my_training.html
-
-# Open the HTML file in your browser
+# Open training_dashboard.html in your browser
 # It auto-refreshes every 30 seconds
 ```
 
 **Dashboard features:**
 - 📊 Real-time stats: timesteps, episodes, FPS
-- 📈 Reward curves with interactive charts
-- 📋 Recent episode table with status
-- 🎯 Evaluation results overlay
+- 📈 Reward curves with interactive Chart.js charts
+- 📋 Recent episode table with status icons
+- 🎬 Simulation snapshots from evaluations
+- ⚙️ Configuration viewer (all YAML files in tabs)
 
-#### Option 2: TensorBoard (Detailed analysis)
+### Option 2: TensorBoard
 
 ```bash
-# In a separate terminal, start TensorBoard
 tensorboard --logdir ./logs
-
-# Open http://localhost:6006 in your browser
+# Open http://localhost:6006
 ```
 
 **TensorBoard features:**
 - Detailed training curves
-- Hyperparameter tracking
 - Policy loss, value loss, entropy
-- Episode statistics
+- Hyperparameter tracking
 
-#### Option 3: Both (Full monitoring)
+---
+
+## Visualization
+
+### Live Training (Pygame Window)
+
+Watch the simulation during training:
 
 ```bash
-# Terminal 1: Training with HTML dashboard
-python -m mission_gym.scripts.train_ppo --timesteps 500000
-
-# Terminal 2: TensorBoard
-tensorboard --logdir ./logs
-
-# Browser Tab 1: training_dashboard.html (quick overview)
-# Browser Tab 2: http://localhost:6006 (detailed analysis)
+python -m mission_gym.scripts.live_training --timesteps 100000 --render-freq 50
 ```
 
-### Training Options
+### Record Episodes (GIF/MP4)
 
 ```bash
-python -m mission_gym.scripts.train_ppo \
-  --timesteps 500000 \        # Total training steps
-  --n-envs 8 \                # Parallel environments (faster training)
-  --eval-freq 10000 \         # Evaluation frequency
-  --html-dashboard dash.html \ # HTML dashboard path
-  --save-path my_model \      # Model save path
-  --log-dir ./my_logs         # TensorBoard log directory
+# Random agent
+python -m mission_gym.scripts.record_video --episodes 3 --format gif
+
+# Trained agent
+python -m mission_gym.scripts.record_video --model ppo_mission_gym --episodes 3 --format mp4
 ```
 
 ### Evaluate Trained Model
@@ -125,88 +185,83 @@ python -m mission_gym.scripts.evaluate --model ppo_mission_gym --episodes 10
 
 ---
 
-## Visualization Options
-
-### Option 1: Live Training Visualization (Pygame Window)
-
-Watch the simulation during training with a live pygame window:
-
-```bash
-python -m mission_gym.scripts.live_training --timesteps 100000 --render-freq 50
-```
-
-This opens a pygame window every 50 episodes showing how the agent is performing.
-
-### Option 2: Record Episodes as Video/GIF
-
-Record simulation episodes as GIF or MP4:
-
-```bash
-# Record random agent
-python -m mission_gym.scripts.record_video --episodes 3 --format gif
-
-# Record trained agent
-python -m mission_gym.scripts.record_video --model ppo_mission_gym --episodes 3 --format gif
-```
-
-Output saved to `recordings/` folder.
-
-### Option 3: HTML Dashboard with Snapshots
-
-The HTML dashboard automatically includes simulation snapshots from evaluations:
-
-```bash
-python -m mission_gym.scripts.train_ppo --timesteps 100000 --eval-freq 5000
-```
-
-Open `training_dashboard.html` in your browser - it shows:
-- 📊 Training stats and reward curves
-- 🎬 Simulation snapshots from each evaluation
-- Auto-refreshes every 30 seconds
-
----
-
 ## Environment Details
 
 ### Observation Space
 
 The environment provides a `Dict` observation:
 
-1. **BEV (Bird's Eye View)**: `Box(0, 1, (128, 128, 8), float32)`
-   - Channel 0: Obstacles
-   - Channel 1: Objective zone
-   - Channel 2: All attackers
-   - Channel 3: All defenders
-   - Channel 4: Attacker type ID map
-   - Channel 5: Defender FOV/detection map
-   - Channel 6: Tag cooldown heatmap
-   - Channel 7: Capture progress (broadcast)
+| Key | Shape | Description |
+|-----|-------|-------------|
+| `bev` | `(128, 128, 8)` | Bird's-eye-view raster image |
+| `vector` | `(N,)` | Flattened unit features + global state |
 
-2. **Vector**: `Box(-inf, inf, (N,), float32)`
-   - Per-unit features: x, y, heading, speed, integrity, cooldowns, altitude
-   - Global: time remaining, capture progress
+**BEV Channels:**
+| Channel | Content |
+|---------|---------|
+| 0 | Obstacles |
+| 1 | Objective zone |
+| 2 | All attackers |
+| 3 | All defenders |
+| 4 | Attacker type ID map |
+| 5 | Defender FOV/detection |
+| 6 | Tag cooldown heatmap |
+| 7 | Capture progress (broadcast) |
 
 ### Action Space
 
-`MultiDiscrete` with one discrete action per attacker unit:
+`MultiDiscrete` with one discrete action per attacker unit.
 
-**UGV Actions (9):** NOOP, THROTTLE_UP, THROTTLE_DOWN, TURN_LEFT, TURN_RIGHT, BRAKE, HOLD, TAG, SCAN
+**UGV Actions (9):**
+`NOOP`, `THROTTLE_UP`, `THROTTLE_DOWN`, `TURN_LEFT`, `TURN_RIGHT`, `BRAKE`, `HOLD`, `TAG`, `SCAN`
 
-**UAV Actions (10):** NOOP, THROTTLE_UP, THROTTLE_DOWN, YAW_LEFT, YAW_RIGHT, ALT_UP, ALT_DOWN, HOLD, TAG, SCAN
+**UAV Actions (10):**
+`NOOP`, `THROTTLE_UP`, `THROTTLE_DOWN`, `YAW_LEFT`, `YAW_RIGHT`, `ALT_UP`, `ALT_DOWN`, `HOLD`, `TAG`, `SCAN`
 
-### Configuration
+---
+
+## Configuration
 
 All parameters are configurable via YAML files in `configs/`:
 
 | File | Description |
 |------|-------------|
 | `world.yaml` | Arena size, obstacles, physics settings |
-| `scenario.yaml` | Unit spawns, objective zone location |
+| `scenario.yaml` | Unit spawns, objective zone |
 | `units_attackers.yaml` | Attacker unit type definitions |
 | `units_defenders.yaml` | Defender unit type definitions |
-| `sensors.yaml` | Lidar, radar, camera configurations |
+| `sensors.yaml` | Lidar, radar, camera configs |
 | `engagement.yaml` | Tag beam parameters, cooldowns |
 | `reward.yaml` | Reward function weights |
+
+### Example: Add a New Obstacle
+
+Edit `configs/world.yaml`:
+
+```yaml
+obstacles:
+  - type: "circle"
+    position: [50.0, 50.0]
+    radius: 10.0
+  - type: "rectangle"
+    position: [100.0, 100.0]
+    size: [20.0, 10.0]
+    angle: 45.0
+```
+
+### Example: Modify Unit Properties
+
+Edit `configs/units_attackers.yaml`:
+
+```yaml
+UGV_A:
+  type: "UGV"
+  radius: 2.5          # Footprint size (affects obstacle navigation)
+  max_speed: 8.0       # m/s
+  max_acceleration: 3.0
+  max_turn_rate: 90.0  # deg/s
+  initial_integrity: 100.0
+```
 
 ---
 
@@ -214,9 +269,9 @@ All parameters are configurable via YAML files in `configs/`:
 
 ```
 comander/
-├── pyproject.toml
-├── README.md
-├── configs/
+├── pyproject.toml          # Package configuration
+├── README.md               # This file
+├── configs/                # YAML configuration files
 │   ├── world.yaml
 │   ├── scenario.yaml
 │   ├── units_attackers.yaml
@@ -224,9 +279,13 @@ comander/
 │   ├── sensors.yaml
 │   ├── engagement.yaml
 │   └── reward.yaml
-└── mission_gym/
+├── tests/                  # Pytest test suite
+│   ├── test_env.py
+│   ├── test_config.py
+│   └── test_dynamics.py
+└── mission_gym/            # Main package
     ├── __init__.py
-    ├── env.py              # Main Gymnasium environment
+    ├── env.py              # Gymnasium environment
     ├── config.py           # Configuration loading
     ├── scenario.py         # Scenario management
     ├── dynamics.py         # Unit physics/kinematics
@@ -235,18 +294,52 @@ comander/
     ├── reward.py           # Reward function
     ├── renderer.py         # Pygame rendering
     ├── defenders.py        # Scripted defender AI
-    ├── backends/
-    │   ├── base.py         # Abstract backend
-    │   ├── simple2p5d.py   # Simple 2.5D physics
-    │   ├── isaac_stub.py   # Isaac Sim placeholder
-    │   └── mujoco_stub.py  # MuJoCo placeholder
-    └── scripts/
-        ├── smoke_test.py   # Verification script
-        ├── play_manual.py  # Manual keyboard play
-        ├── train_ppo.py    # PPO training with monitoring
-        ├── evaluate.py     # Model evaluation
-        └── monitoring.py   # HTML dashboard callback
+    ├── backends/           # Physics backend abstraction
+    │   ├── base.py
+    │   ├── simple2p5d.py
+    │   ├── isaac_stub.py
+    │   └── mujoco_stub.py
+    └── scripts/            # Runnable scripts
+        ├── smoke_test.py
+        ├── play_manual.py
+        ├── train_ppo.py
+        ├── evaluate.py
+        ├── monitoring.py
+        ├── live_training.py
+        ├── record_video.py
+        └── view_scenario.py
 ```
+
+---
+
+## Testing
+
+### Run All Tests
+
+```bash
+pytest tests/ -v
+```
+
+### Run with Coverage
+
+```bash
+pytest tests/ --cov=mission_gym --cov-report=html
+```
+
+---
+
+## CI/CD
+
+This project uses GitHub Actions for continuous integration. On every push/PR:
+
+1. ✅ Linting with flake8
+2. ✅ Type checking with mypy (optional)
+3. ✅ Unit tests with pytest
+4. ✅ Smoke test verification
+
+See `.github/workflows/ci.yml` for details.
+
+---
 
 ## License
 
