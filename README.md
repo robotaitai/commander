@@ -101,10 +101,18 @@ python -m mission_gym.scripts.play_manual
 python -m mission_gym.scripts.train_ppo --timesteps 500000
 ```
 
-This creates:
-1. **HTML Dashboard** (`training_dashboard.html`) - Auto-refreshes every 30s
-2. **TensorBoard logs** (`./logs/`) - For detailed metrics
-3. **Checkpoints** (`./logs/checkpoints/`) - Periodic model saves
+Each training run creates a **unique named folder** like `swift-falcon-20260121-143052`:
+
+```
+runs/swift-falcon-20260121-143052/
+├── configs/           # Copy of YAML configs used
+├── checkpoints/       # Model checkpoints
+├── logs/              # TensorBoard logs
+├── dashboard.html     # Live HTML dashboard
+├── final_model.zip    # Trained model
+├── rewards_history.json
+└── run_metadata.json
+```
 
 ### Training with Options
 
@@ -113,51 +121,49 @@ python -m mission_gym.scripts.train_ppo \
   --timesteps 500000 \
   --n-envs 8 \
   --eval-freq 10000 \
-  --html-dashboard my_dashboard.html \
-  --save-path my_model \
-  --log-dir ./my_logs
+  --run-name my-custom-run
 ```
 
 | Option | Description | Default |
 |--------|-------------|---------|
 | `--timesteps` | Total training steps | 100000 |
 | `--n-envs` | Parallel environments | 4 |
-| `--eval-freq` | Evaluation frequency | 10000 |
-| `--html-dashboard` | Dashboard HTML path | training_dashboard.html |
-| `--save-path` | Model save path | ppo_mission_gym |
-| `--log-dir` | TensorBoard log directory | ./logs |
+| `--eval-freq` | Evaluation frequency | 5000 |
+| `--run-name` | Custom run name | Auto-generated |
+| `--seed` | Random seed | 42 |
 
 ---
 
 ## Monitoring
 
-### Option 1: HTML Dashboard (Recommended)
+### HTML Dashboard
 
-The HTML dashboard is automatically generated during training:
+Each run creates a `dashboard.html` with:
+- 📊 Real-time training stats
+- 🖥️ **Live GPU stats** (nvidia-smi: utilization, memory, temperature, power)
+- 📈 Reward curves with Chart.js
+- 🎬 Simulation snapshots from evaluations
+- ⚙️ Configuration viewer (all YAML files)
 
 ```bash
-# Open training_dashboard.html in your browser
-# It auto-refreshes every 30 seconds
+# Open in browser (auto-refreshes every 30s)
+open runs/<run-name>/dashboard.html
 ```
 
-**Dashboard features:**
-- 📊 Real-time stats: timesteps, episodes, FPS
-- 📈 Reward curves with interactive Chart.js charts
-- 📋 Recent episode table with status icons
-- 🎬 Simulation snapshots from evaluations
-- ⚙️ Configuration viewer (all YAML files in tabs)
-
-### Option 2: TensorBoard
+### TensorBoard
 
 ```bash
-tensorboard --logdir ./logs
+tensorboard --logdir runs/<run-name>/logs
 # Open http://localhost:6006
 ```
 
-**TensorBoard features:**
-- Detailed training curves
-- Policy loss, value loss, entropy
-- Hyperparameter tracking
+### Colored Terminal Output
+
+Training shows colorful progress with:
+- 🎮 Banner with run name
+- 🖥️ GPU status bars (memory, utilization, temperature)
+- ✓ Step-by-step progress indicators
+- 📊 Stats and monitoring info
 
 ---
 
@@ -283,6 +289,15 @@ comander/
 │   ├── sensors.yaml
 │   ├── engagement.yaml
 │   └── reward.yaml
+├── runs/                   # Training runs (auto-generated)
+│   └── swift-falcon-20260121-143052/
+│       ├── configs/        # Configs used for this run
+│       ├── checkpoints/    # Model checkpoints
+│       ├── logs/           # TensorBoard logs
+│       ├── dashboard.html  # Live dashboard
+│       ├── final_model.zip
+│       ├── rewards_history.json
+│       └── run_metadata.json
 ├── tests/                  # Pytest test suite
 │   ├── test_env.py
 │   ├── test_config.py
@@ -304,11 +319,12 @@ comander/
     │   ├── isaac_stub.py
     │   └── mujoco_stub.py
     └── scripts/            # Runnable scripts
+        ├── train_ppo.py    # Main training script
+        ├── evaluate.py     # Model evaluation
+        ├── monitoring.py   # HTML dashboard generation
+        ├── run_utils.py    # Run management utilities
         ├── smoke_test.py
         ├── play_manual.py
-        ├── train_ppo.py
-        ├── evaluate.py
-        ├── monitoring.py
         ├── live_training.py
         ├── record_video.py
         └── view_scenario.py

@@ -34,14 +34,24 @@ ENV/
 *.swo
 *~
 
-# Logs and checkpoints (keep structure, ignore contents)
+# Training runs (keep directory structure)
+runs/*/checkpoints/
+runs/*/logs/
+runs/*/*.html
+runs/*/*.zip
+runs/*/rewards_history.json
+runs/*/run_metadata.json
+# Keep configs saved with each run
+!runs/*/configs/
+
+# Legacy outputs in root (should not exist)
 logs/
 *.zip
 recordings/
-
-# Dashboard HTML (generated)
 *_dashboard.html
 test_dashboard.html
+training_dashboard.html
+ppo_mission_gym*
 
 # Pytest
 .pytest_cache/

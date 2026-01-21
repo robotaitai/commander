@@ -19,16 +19,57 @@ except ImportError:
     PYGAME_AVAILABLE = False
 
 
+def get_nvidia_smi_info() -> Optional[Dict]:
+    """Get NVIDIA GPU information using nvidia-smi."""
+    import subprocess
+    try:
+        result = subprocess.run(
+            ["nvidia-smi", "--query-gpu=name,memory.total,memory.used,memory.free,utilization.gpu,utilization.memory,temperature.gpu,power.draw,power.limit",
+             "--format=csv,noheader,nounits"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        
+        if result.returncode != 0:
+            return None
+        
+        lines = result.stdout.strip().split("\n")
+        gpus = []
+        
+        for i, line in enumerate(lines):
+            parts = [p.strip() for p in line.split(",")]
+            if len(parts) >= 9:
+                gpus.append({
+                    "index": i,
+                    "name": parts[0],
+                    "memory_total_mb": int(float(parts[1])) if parts[1] != "[N/A]" else None,
+                    "memory_used_mb": int(float(parts[2])) if parts[2] != "[N/A]" else None,
+                    "memory_free_mb": int(float(parts[3])) if parts[3] != "[N/A]" else None,
+                    "gpu_util_pct": int(float(parts[4])) if parts[4] != "[N/A]" else None,
+                    "mem_util_pct": int(float(parts[5])) if parts[5] != "[N/A]" else None,
+                    "temperature_c": int(float(parts[6])) if parts[6] != "[N/A]" else None,
+                    "power_draw_w": float(parts[7]) if parts[7] != "[N/A]" else None,
+                    "power_limit_w": float(parts[8]) if parts[8] != "[N/A]" else None,
+                })
+        
+        return {"gpus": gpus, "timestamp": datetime.now().isoformat()}
+    except Exception:
+        return None
+
+
 class HTMLMonitorCallback(BaseCallback):
     """
     Callback that generates an HTML dashboard for monitoring training progress.
     
     Updates an HTML file with:
     - Training stats (timesteps, episodes, FPS)
+    - GPU utilization (nvidia-smi)
     - Reward curves
     - Episode length trends
     - Evaluation results
     - Recent episode summaries
+    - Configuration viewer
     """
     
     def __init__(
@@ -36,10 +77,12 @@ class HTMLMonitorCallback(BaseCallback):
         html_path: str = "training_dashboard.html",
         update_freq: int = 1000,
         verbose: int = 0,
+        run_dir: Optional[Path] = None,
     ):
         super().__init__(verbose)
         self.html_path = Path(html_path)
         self.update_freq = update_freq
+        self.run_dir = run_dir
         
         # Training history
         self.episode_rewards: List[float] = []
@@ -48,6 +91,10 @@ class HTMLMonitorCallback(BaseCallback):
         self.mean_rewards: List[float] = []
         self.eval_rewards: List[float] = []
         self.eval_timesteps: List[int] = []
+        
+        # GPU history for charts
+        self.gpu_history: List[Dict] = []
+        self.gpu_timestamps: List[str] = []
         
         # Current episode tracking
         self.current_episode_reward = 0.0
@@ -67,10 +114,14 @@ class HTMLMonitorCallback(BaseCallback):
     def _load_config_yamls(self) -> Dict[str, str]:
         """Load all YAML config files for display."""
         from mission_gym.config import get_config_dir
-        import yaml
         
         configs = {}
-        config_dir = get_config_dir()
+        
+        # Try run-specific configs first, then fall back to main configs
+        if self.run_dir:
+            config_dir = self.run_dir / "configs"
+        else:
+            config_dir = get_config_dir()
         
         yaml_files = [
             "world.yaml",
@@ -94,6 +145,90 @@ class HTMLMonitorCallback(BaseCallback):
         
         return configs
     
+    def _update_gpu_history(self) -> Optional[Dict]:
+        """Update GPU history and return current stats."""
+        gpu_info = get_nvidia_smi_info()
+        if gpu_info and gpu_info.get("gpus"):
+            self.gpu_history.append(gpu_info)
+            self.gpu_timestamps.append(datetime.now().strftime("%H:%M:%S"))
+            # Keep last 60 readings (about 30 minutes at 30s intervals)
+            if len(self.gpu_history) > 60:
+                self.gpu_history = self.gpu_history[-60:]
+                self.gpu_timestamps = self.gpu_timestamps[-60:]
+        return gpu_info
+    
+    def _generate_gpu_html(self, gpu_info: Optional[Dict]) -> str:
+        """Generate HTML for GPU stats."""
+        if not gpu_info or not gpu_info.get("gpus"):
+            return '''
+            <div class="stat-card">
+                <div class="stat-label">GPU Status</div>
+                <div class="stat-value" style="font-size: 1rem; color: var(--text-secondary);">No GPU detected</div>
+            </div>
+            '''
+        
+        gpus_html = []
+        for gpu in gpu_info["gpus"]:
+            name = gpu.get("name", "Unknown")
+            mem_used = gpu.get("memory_used_mb", 0)
+            mem_total = gpu.get("memory_total_mb", 1)
+            gpu_util = gpu.get("gpu_util_pct", 0) or 0
+            mem_util = gpu.get("mem_util_pct", 0) or 0
+            temp = gpu.get("temperature_c", 0) or 0
+            power_draw = gpu.get("power_draw_w", 0) or 0
+            power_limit = gpu.get("power_limit_w", 1) or 1
+            
+            mem_pct = (mem_used / mem_total * 100) if mem_total else 0
+            power_pct = (power_draw / power_limit * 100) if power_limit else 0
+            
+            # Color classes
+            gpu_color = "danger" if gpu_util > 90 else "warning" if gpu_util > 70 else "success"
+            mem_color = "danger" if mem_pct > 90 else "warning" if mem_pct > 70 else "success"
+            temp_color = "danger" if temp > 80 else "warning" if temp > 70 else "success"
+            
+            gpus_html.append(f'''
+            <div class="gpu-card">
+                <div class="gpu-name">{name}</div>
+                <div class="gpu-metrics">
+                    <div class="gpu-metric">
+                        <span class="metric-label">GPU</span>
+                        <div class="progress-bar">
+                            <div class="progress-fill {gpu_color}" style="width: {gpu_util}%"></div>
+                        </div>
+                        <span class="metric-value">{gpu_util}%</span>
+                    </div>
+                    <div class="gpu-metric">
+                        <span class="metric-label">MEM</span>
+                        <div class="progress-bar">
+                            <div class="progress-fill {mem_color}" style="width: {mem_pct:.0f}%"></div>
+                        </div>
+                        <span class="metric-value">{mem_used:,}/{mem_total:,} MB</span>
+                    </div>
+                    <div class="gpu-metric">
+                        <span class="metric-label">TEMP</span>
+                        <div class="progress-bar">
+                            <div class="progress-fill {temp_color}" style="width: {min(temp, 100)}%"></div>
+                        </div>
+                        <span class="metric-value">{temp}°C</span>
+                    </div>
+                    <div class="gpu-metric">
+                        <span class="metric-label">PWR</span>
+                        <div class="progress-bar">
+                            <div class="progress-fill" style="width: {power_pct:.0f}%"></div>
+                        </div>
+                        <span class="metric-value">{power_draw:.0f}W/{power_limit:.0f}W</span>
+                    </div>
+                </div>
+            </div>
+            ''')
+        
+        return f'''
+        <div class="chart-container">
+            <div class="chart-title">🖥️ GPU Status (Live)</div>
+            {"".join(gpus_html)}
+        </div>
+        '''
+    
     def _generate_config_html(self) -> str:
         """Generate HTML for config viewer."""
         if not self.config_yaml:
@@ -103,15 +238,12 @@ class HTMLMonitorCallback(BaseCallback):
         panels = []
         
         for i, (filename, content) in enumerate(self.config_yaml.items()):
-            # Clean filename for ID
             file_id = filename.replace('.', '_').replace('/', '_')
             active = "active" if i == 0 else ""
             
-            # Create tab button
             short_name = filename.replace('.yaml', '').replace('_', ' ').title()
             tabs.append(f'<button class="config-tab {active}" onclick="showConfig(\'{file_id}\')">{short_name}</button>')
             
-            # Create content panel - escape HTML entities
             escaped_content = content.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
             display = "block" if i == 0 else "none"
             panels.append(f'<pre class="config-content" id="{file_id}" style="display: {display};">{escaped_content}</pre>')
@@ -133,7 +265,6 @@ class HTMLMonitorCallback(BaseCallback):
         self._generate_html()
     
     def _on_step(self) -> bool:
-        # Track rewards
         rewards = self.locals.get("rewards", [0])
         dones = self.locals.get("dones", [False])
         
@@ -146,7 +277,6 @@ class HTMLMonitorCallback(BaseCallback):
                 self.episode_lengths.append(self.current_episode_length)
                 self.episodes_completed += 1
                 
-                # Track mean reward every 10 episodes
                 if len(self.episode_rewards) % 10 == 0:
                     mean_reward = np.mean(self.episode_rewards[-100:])
                     self.mean_rewards.append(mean_reward)
@@ -155,7 +285,6 @@ class HTMLMonitorCallback(BaseCallback):
                 self.current_episode_reward = 0.0
                 self.current_episode_length = 0
         
-        # Update HTML periodically
         if self.num_timesteps - self.last_update_timestep >= self.update_freq:
             self._generate_html()
             self.last_update_timestep = self.num_timesteps
@@ -170,7 +299,7 @@ class HTMLMonitorCallback(BaseCallback):
         self.eval_rewards.append(mean_reward)
         self.eval_timesteps.append(timestep)
         if snapshots:
-            self.stored_snapshots = snapshots  # Store for future HTML generations
+            self.stored_snapshots = snapshots
         self._generate_html()
     
     def _generate_snapshot_gallery(self, snapshots: List[Dict]) -> str:
@@ -179,7 +308,7 @@ class HTMLMonitorCallback(BaseCallback):
             return '<div class="chart-container"><div class="chart-title">🎬 Simulation Snapshots</div><p style="color: var(--text-secondary);">Snapshots will appear here after first evaluation...</p></div>'
         
         sections = []
-        for snap in snapshots[-3:]:  # Show last 3 evaluations
+        for snap in snapshots[-3:]:
             timestep = snap.get("timestep", 0)
             reward = snap.get("reward", 0)
             frames = snap.get("frames", [])
@@ -221,10 +350,13 @@ class HTMLMonitorCallback(BaseCallback):
         elapsed = datetime.now() - self.start_time if self.start_time else None
         elapsed_str = str(elapsed).split('.')[0] if elapsed else "N/A"
         
-        # Calculate stats
         fps = self.num_timesteps / elapsed.total_seconds() if elapsed else 0
         mean_reward_100 = np.mean(self.episode_rewards[-100:]) if self.episode_rewards else 0
         mean_length_100 = np.mean(self.episode_lengths[-100:]) if self.episode_lengths else 0
+        
+        # Get GPU info
+        gpu_info = self._update_gpu_history()
+        gpu_html = self._generate_gpu_html(gpu_info)
         
         # Recent episodes table
         recent_episodes = list(zip(
@@ -233,7 +365,7 @@ class HTMLMonitorCallback(BaseCallback):
             self.episode_lengths[-10:]
         ))[::-1]
         
-        # Chart data as JSON
+        # Chart data
         chart_data = {
             "timesteps": self.timesteps_history,
             "mean_rewards": self.mean_rewards,
@@ -241,18 +373,25 @@ class HTMLMonitorCallback(BaseCallback):
             "eval_rewards": self.eval_rewards,
         }
         
-        # Generate snapshot gallery HTML
-        snapshot_html = self._generate_snapshot_gallery(self.stored_snapshots)
+        # GPU chart data
+        gpu_chart_data = {
+            "timestamps": self.gpu_timestamps[-30:],
+            "gpu_util": [g["gpus"][0]["gpu_util_pct"] if g["gpus"] else 0 for g in self.gpu_history[-30:]],
+            "mem_util": [g["gpus"][0]["mem_util_pct"] if g["gpus"] else 0 for g in self.gpu_history[-30:]],
+            "temperature": [g["gpus"][0]["temperature_c"] if g["gpus"] else 0 for g in self.gpu_history[-30:]],
+        }
         
-        # Generate config viewer HTML
+        snapshot_html = self._generate_snapshot_gallery(self.stored_snapshots)
         config_html = self._generate_config_html()
+        
+        run_name = self.run_dir.name if self.run_dir else "Training"
         
         html = f"""<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta http-equiv="refresh" content="30">
-    <title>Mission Gym Training Dashboard</title>
+    <title>{run_name} - Mission Gym Dashboard</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         :root {{
@@ -283,6 +422,14 @@ class HTMLMonitorCallback(BaseCallback):
             -webkit-text-fill-color: transparent;
         }}
         .subtitle {{ color: var(--text-secondary); margin-bottom: 2rem; }}
+        .run-name {{
+            background: var(--bg-tertiary);
+            padding: 0.5rem 1rem;
+            border-radius: 8px;
+            font-family: monospace;
+            display: inline-block;
+            margin-bottom: 1rem;
+        }}
         .grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 2rem; }}
         .stat-card {{
             background: var(--bg-secondary);
@@ -323,6 +470,59 @@ class HTMLMonitorCallback(BaseCallback):
         .badge-success {{ background: rgba(63, 185, 80, 0.2); color: var(--success); }}
         .badge-warning {{ background: rgba(210, 153, 34, 0.2); color: var(--warning); }}
         .last-update {{ color: var(--text-secondary); font-size: 0.85rem; margin-top: 2rem; text-align: center; }}
+        
+        /* GPU Card Styles */
+        .gpu-card {{
+            background: var(--bg-tertiary);
+            border-radius: 8px;
+            padding: 1rem;
+            margin-bottom: 1rem;
+        }}
+        .gpu-name {{
+            font-weight: 600;
+            margin-bottom: 0.75rem;
+            color: var(--accent);
+        }}
+        .gpu-metrics {{
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 0.5rem;
+        }}
+        .gpu-metric {{
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }}
+        .metric-label {{
+            width: 40px;
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+            font-weight: 500;
+        }}
+        .progress-bar {{
+            flex: 1;
+            height: 8px;
+            background: var(--bg-primary);
+            border-radius: 4px;
+            overflow: hidden;
+        }}
+        .progress-fill {{
+            height: 100%;
+            border-radius: 4px;
+            background: var(--accent);
+            transition: width 0.3s;
+        }}
+        .progress-fill.success {{ background: var(--success); }}
+        .progress-fill.warning {{ background: var(--warning); }}
+        .progress-fill.danger {{ background: var(--danger); }}
+        .metric-value {{
+            min-width: 100px;
+            font-size: 0.8rem;
+            text-align: right;
+            font-family: monospace;
+        }}
+        
+        /* Snapshot styles */
         .snapshot-gallery {{
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
@@ -361,6 +561,8 @@ class HTMLMonitorCallback(BaseCallback):
         }}
         .eval-title {{ font-size: 0.9rem; color: var(--text-primary); }}
         .eval-reward {{ font-size: 1.2rem; font-weight: 600; color: var(--accent); }}
+        
+        /* Config styles */
         .config-tabs {{
             display: flex;
             flex-wrap: wrap;
@@ -400,22 +602,15 @@ class HTMLMonitorCallback(BaseCallback):
             color: var(--text-primary);
             white-space: pre-wrap;
         }}
-        .config-content::-webkit-scrollbar {{
-            width: 8px;
-        }}
-        .config-content::-webkit-scrollbar-track {{
-            background: var(--bg-tertiary);
-            border-radius: 4px;
-        }}
-        .config-content::-webkit-scrollbar-thumb {{
-            background: var(--accent);
-            border-radius: 4px;
-        }}
+        .config-content::-webkit-scrollbar {{ width: 8px; }}
+        .config-content::-webkit-scrollbar-track {{ background: var(--bg-tertiary); border-radius: 4px; }}
+        .config-content::-webkit-scrollbar-thumb {{ background: var(--accent); border-radius: 4px; }}
     </style>
 </head>
 <body>
     <div class="container">
         <h1>🎮 Mission Gym Training</h1>
+        <div class="run-name">📁 {run_name}</div>
         <p class="subtitle">Real-time training progress dashboard</p>
         
         <div class="grid">
@@ -444,6 +639,8 @@ class HTMLMonitorCallback(BaseCallback):
                 <div class="stat-value" style="font-size: 1.2rem;">{elapsed_str}</div>
             </div>
         </div>
+        
+        {gpu_html}
         
         <div class="chart-container">
             <div class="chart-title">📈 Reward Progress</div>
@@ -483,7 +680,6 @@ class HTMLMonitorCallback(BaseCallback):
     </div>
     
     <script>
-        // Config tab switching
         function showConfig(id) {{
             document.querySelectorAll('.config-content').forEach(el => el.style.display = 'none');
             document.querySelectorAll('.config-tab').forEach(el => el.classList.remove('active'));
@@ -491,6 +687,7 @@ class HTMLMonitorCallback(BaseCallback):
             event.target.classList.add('active');
         }}
         const data = {json.dumps(chart_data)};
+        const gpuData = {json.dumps(gpu_chart_data)};
         
         new Chart(document.getElementById('rewardChart'), {{
             type: 'line',
@@ -537,8 +734,6 @@ class HTMLMonitorCallback(BaseCallback):
 </html>"""
         
         self.html_path.write_text(html)
-        if self.verbose > 0:
-            print(f"Dashboard updated: {self.html_path}")
 
 
 class EvalWithMonitorCallback(BaseCallback):
@@ -566,9 +761,8 @@ class EvalWithMonitorCallback(BaseCallback):
         self.capture_snapshots = capture_snapshots and PYGAME_AVAILABLE
         self.snapshot_steps = snapshot_steps or [0, 5, 15, 30, 50, 100]
         
-        # Snapshot storage (base64 encoded images)
         self.snapshots: List[Dict] = []
-        self.max_snapshots = 8  # Keep last N evaluation snapshots
+        self.max_snapshots = 8
     
     def _on_step(self) -> bool:
         if self.num_timesteps - self.last_eval_timestep >= self.eval_freq:
@@ -593,7 +787,6 @@ class EvalWithMonitorCallback(BaseCallback):
                 total_reward += reward
                 done = terminated or truncated
                 
-                # Capture snapshot at specific steps (first episode only)
                 if ep_idx == 0 and self.capture_snapshots and step in self.snapshot_steps:
                     frame = self._capture_frame(step, total_reward, info)
                     if frame:
@@ -608,31 +801,25 @@ class EvalWithMonitorCallback(BaseCallback):
         if self.verbose > 0:
             print(f"Eval at {self.num_timesteps}: mean_reward={mean_reward:.2f}")
         
-        # Store snapshots
         if captured_frames:
             self.snapshots.append({
                 "timestep": self.num_timesteps,
                 "reward": mean_reward,
                 "frames": captured_frames,
             })
-            # Keep only recent snapshots
             if len(self.snapshots) > self.max_snapshots:
                 self.snapshots = self.snapshots[-self.max_snapshots:]
         
-        # Update HTML monitor with snapshots
         self.html_monitor.add_eval_result(mean_reward, self.num_timesteps, self.snapshots)
     
     def _capture_frame(self, step: int, reward: float, info: dict) -> Optional[Dict]:
         """Capture a frame from the environment as base64."""
         if not PYGAME_AVAILABLE:
-            if self.verbose > 0:
-                print(f"Skipping frame capture: PYGAME_AVAILABLE={PYGAME_AVAILABLE}")
             return None
         
         try:
             import pygame
             
-            # Initialize pygame if needed (for offscreen rendering)
             if not pygame.get_init():
                 import os
                 if 'SDL_VIDEODRIVER' not in os.environ:
@@ -645,18 +832,13 @@ class EvalWithMonitorCallback(BaseCallback):
             config = env.config
             size = 400
             
-            # Create offscreen surface
             screen = pygame.Surface((size, size))
-            
-            # Render
             self._render_to_surface(screen, env, size, step, reward)
             
-            # Convert to PNG bytes
             png_bytes = io.BytesIO()
             pygame.image.save(screen, png_bytes, "PNG")
             png_bytes.seek(0)
             
-            # Encode as base64
             b64 = base64.b64encode(png_bytes.read()).decode('utf-8')
             
             return {
@@ -674,7 +856,6 @@ class EvalWithMonitorCallback(BaseCallback):
         import pygame
         import math
         
-        # Colors
         BG = (30, 30, 40)
         GRID = (50, 50, 60)
         OBSTACLE = (80, 80, 100)
@@ -696,13 +877,11 @@ class EvalWithMonitorCallback(BaseCallback):
         
         screen.fill(BG)
         
-        # Grid
         for x in range(0, int(world_w) + 1, 20):
             pygame.draw.line(screen, GRID, w2s(x, 0), w2s(x, world_h), 1)
         for y in range(0, int(world_h) + 1, 20):
             pygame.draw.line(screen, GRID, w2s(0, y), w2s(world_w, y), 1)
         
-        # Obstacles
         for obs in config.world.obstacles:
             if obs.type == "circle":
                 pygame.draw.circle(screen, OBSTACLE, w2s(obs.x, obs.y), int(obs.radius * scale))
@@ -711,14 +890,12 @@ class EvalWithMonitorCallback(BaseCallback):
                 if corners:
                     pygame.draw.polygon(screen, OBSTACLE, [w2s(x, y) for x, y in corners])
         
-        # Objective
         obj = env.objective
         progress = obj.capture_progress / obj.capture_time_required
         color = tuple(int(OBJECTIVE[i] + (OBJECTIVE_CAPTURED[i] - OBJECTIVE[i]) * progress) for i in range(3))
         pygame.draw.circle(screen, color, w2s(obj.x, obj.y), int(obj.radius * scale))
         pygame.draw.circle(screen, TEXT, w2s(obj.x, obj.y), int(obj.radius * scale), 2)
         
-        # Units
         for unit in env.defenders + env.attackers:
             ux, uy = w2s(unit.x, unit.y)
             
@@ -741,7 +918,6 @@ class EvalWithMonitorCallback(BaseCallback):
             dy = -math.sin(heading_rad) * radius * 1.5
             pygame.draw.line(screen, TEXT, (ux, uy), (int(ux + dx), int(uy + dy)), 2)
         
-        # HUD
         font = pygame.font.Font(None, 20)
         screen.blit(font.render(f"Step: {step}", True, TEXT), (5, 5))
         screen.blit(font.render(f"R: {reward:.1f}", True, TEXT), (5, 22))

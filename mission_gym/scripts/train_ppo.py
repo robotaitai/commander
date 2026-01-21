@@ -18,10 +18,10 @@ def main():
         help="Total training timesteps (default: 100000)",
     )
     parser.add_argument(
-        "--save-path",
+        "--run-name",
         type=str,
-        default="ppo_mission_gym",
-        help="Path to save the trained model (default: ppo_mission_gym)",
+        default=None,
+        help="Custom run name (default: auto-generated like 'swift-falcon-20260121-143052')",
     )
     parser.add_argument(
         "--n-envs",
@@ -36,18 +36,6 @@ def main():
         help="Random seed (default: 42)",
     )
     parser.add_argument(
-        "--log-dir",
-        type=str,
-        default="./logs",
-        help="Directory for tensorboard logs (default: ./logs)",
-    )
-    parser.add_argument(
-        "--html-dashboard",
-        type=str,
-        default="training_dashboard.html",
-        help="Path for HTML dashboard (default: training_dashboard.html)",
-    )
-    parser.add_argument(
         "--eval-freq",
         type=int,
         default=5000,
@@ -60,9 +48,35 @@ def main():
     )
     args = parser.parse_args()
     
-    print("=" * 60)
-    print("Mission Gym - PPO Training")
-    print("=" * 60)
+    # Import run utilities
+    from mission_gym.scripts.run_utils import (
+        create_run_dir, save_run_configs, save_run_metadata, save_rewards_history,
+        print_banner, print_gpu_status, print_step, print_info, print_warning,
+        print_error, print_success, print_divider, Colors, get_nvidia_smi_info,
+    )
+    
+    c = Colors
+    
+    # Create run directory
+    run_dir = create_run_dir(args.run_name)
+    run_name = run_dir.name
+    
+    # Print banner
+    print_banner(run_name)
+    
+    # Print GPU status
+    print_gpu_status()
+    print_divider()
+    
+    # Save configs
+    print()
+    print_step(1, "Saving configuration files")
+    save_run_configs(run_dir)
+    print_info(f"Configs saved to {run_dir / 'configs'}")
+    
+    # Save run metadata
+    save_run_metadata(run_dir, vars(args))
+    print_info(f"Metadata saved to {run_dir / 'run_metadata.json'}")
     
     # Initialize pygame for snapshot capture (headless)
     try:
@@ -75,27 +89,29 @@ def main():
         pass  # Snapshots will be disabled if pygame fails
     
     # Import dependencies
-    print("\n[1] Importing dependencies...")
+    print()
+    print_step(2, "Importing dependencies")
     try:
         from stable_baselines3 import PPO
         from stable_baselines3.common.callbacks import CheckpointCallback, CallbackList
         from stable_baselines3.common.vec_env import DummyVecEnv
-        print("    ✓ Stable-Baselines3 imported")
+        print_info("Stable-Baselines3 imported")
     except ImportError as e:
-        print(f"    ✗ Import failed: {e}")
-        print("    Install with: pip install stable-baselines3")
+        print_error(f"Import failed: {e}")
+        print_info("Install with: pip install stable-baselines3")
         return 1
     
     try:
         from mission_gym.env import MissionGymEnv
         from mission_gym.scripts.monitoring import HTMLMonitorCallback, EvalWithMonitorCallback
-        print("    ✓ MissionGymEnv and monitoring imported")
+        print_info("MissionGymEnv and monitoring imported")
     except ImportError as e:
-        print(f"    ✗ Import failed: {e}")
+        print_error(f"Import failed: {e}")
         return 1
     
     # Create vectorized environment
-    print(f"\n[2] Creating {args.n_envs} parallel environments...")
+    print()
+    print_step(3, f"Creating {args.n_envs} parallel environments")
     
     def make_env(seed: int):
         def _init():
@@ -106,29 +122,34 @@ def main():
     
     try:
         envs = DummyVecEnv([make_env(args.seed + i) for i in range(args.n_envs)])
-        print(f"    ✓ Created {args.n_envs} environments")
+        print_info(f"Created {args.n_envs} environments")
     except Exception as e:
-        print(f"    ✗ Environment creation failed: {e}")
+        print_error(f"Environment creation failed: {e}")
         import traceback
         traceback.print_exc()
         return 1
     
     # Create evaluation environment
-    print("\n[3] Creating evaluation environment...")
+    print()
+    print_step(4, "Creating evaluation environment")
     eval_env = MissionGymEnv()
     eval_env.reset(seed=args.seed + 1000)
-    print("    ✓ Evaluation environment created")
+    print_info("Evaluation environment created")
     
     # Create callbacks
-    print("\n[4] Setting up callbacks...")
-    log_path = Path(args.log_dir)
-    log_path.mkdir(parents=True, exist_ok=True)
+    print()
+    print_step(5, "Setting up callbacks")
     
-    # HTML monitoring callback
+    log_path = run_dir / "logs"
+    checkpoint_path = run_dir / "checkpoints"
+    dashboard_path = run_dir / "dashboard.html"
+    
+    # HTML monitoring callback with GPU stats
     html_monitor = HTMLMonitorCallback(
-        html_path=args.html_dashboard,
+        html_path=str(dashboard_path),
         update_freq=500,
-        verbose=1,
+        verbose=0,
+        run_dir=run_dir,
     )
     
     # Evaluation callback with HTML integration
@@ -143,17 +164,18 @@ def main():
     # Checkpoint callback
     checkpoint_callback = CheckpointCallback(
         save_freq=max(10000 // args.n_envs, 1),
-        save_path=str(log_path / "checkpoints"),
+        save_path=str(checkpoint_path),
         name_prefix="ppo_mission",
     )
     
     callbacks = CallbackList([html_monitor, eval_callback, checkpoint_callback])
-    print("    ✓ HTML dashboard callback configured")
-    print("    ✓ Evaluation callback configured")
-    print("    ✓ Checkpoint callback configured")
+    print_info("HTML dashboard callback configured")
+    print_info("Evaluation callback configured")
+    print_info("Checkpoint callback configured")
     
     # Create PPO model with MultiInputPolicy (CNN on BEV + MLP on vec)
-    print("\n[5] Creating PPO model with MultiInputPolicy...")
+    print()
+    print_step(6, "Creating PPO model with MultiInputPolicy")
     try:
         tb_log = None if args.no_tensorboard else str(log_path)
         
@@ -180,22 +202,28 @@ def main():
                 },
             },
         )
-        print("    ✓ PPO model created")
+        print_info("PPO model created")
     except Exception as e:
-        print(f"    ✗ Model creation failed: {e}")
+        print_error(f"Model creation failed: {e}")
         import traceback
         traceback.print_exc()
         return 1
     
     # Training info
-    print(f"\n[6] Starting training for {args.timesteps} timesteps...")
     print()
-    print("    📊 Monitoring options:")
-    print(f"       • HTML Dashboard: {args.html_dashboard}")
-    print(f"         Open in browser and it auto-refreshes every 30s")
+    print_divider()
+    print()
+    print(f"  {c.colorize('📊 Monitoring:', c.BOLD, c.BRIGHT_CYAN)}")
+    print()
+    print(f"     {c.colorize('Dashboard:', c.BRIGHT_BLUE)} {dashboard_path}")
+    print(f"     {c.colorize('           ', c.DIM)} Open in browser - auto-refreshes every 30s")
     if not args.no_tensorboard:
-        print(f"       • TensorBoard: tensorboard --logdir {args.log_dir}")
-        print(f"         Then open http://localhost:6006")
+        print(f"     {c.colorize('TensorBoard:', c.BRIGHT_BLUE)} tensorboard --logdir {log_path}")
+        print(f"     {c.colorize('            ', c.DIM)} Then open http://localhost:6006")
+    print()
+    print_divider()
+    print()
+    print(f"  {c.colorize(f'🚀 Starting training for {args.timesteps:,} timesteps...', c.BOLD, c.BRIGHT_GREEN)}")
     print()
     
     try:
@@ -204,33 +232,52 @@ def main():
             callback=callbacks,
             progress_bar=True,
         )
-        print("\n    ✓ Training completed!")
+        print()
+        print_success("Training completed!")
     except KeyboardInterrupt:
-        print("\n    Training interrupted by user")
+        print()
+        print_warning("Training interrupted by user")
     except Exception as e:
-        print(f"\n    ✗ Training failed: {e}")
+        print()
+        print_error(f"Training failed: {e}")
         import traceback
         traceback.print_exc()
         return 1
     
+    # Save rewards history
+    print()
+    print_step(7, "Saving results")
+    save_rewards_history(
+        run_dir,
+        html_monitor.episode_rewards,
+        html_monitor.timesteps_history,
+    )
+    print_info(f"Rewards history saved to {run_dir / 'rewards_history.json'}")
+    
     # Save final model
-    print(f"\n[7] Saving model to {args.save_path}...")
+    model_path = run_dir / "final_model"
     try:
-        model.save(args.save_path)
-        print(f"    ✓ Model saved to {args.save_path}.zip")
+        model.save(str(model_path))
+        print_info(f"Model saved to {model_path}.zip")
     except Exception as e:
-        print(f"    ✗ Save failed: {e}")
+        print_error(f"Save failed: {e}")
     
     # Cleanup
     envs.close()
     eval_env.close()
     
-    print("\n" + "=" * 60)
-    print("Training Complete!")
-    print("=" * 60)
-    print(f"\n📊 View final dashboard: {args.html_dashboard}")
-    print(f"\n🎮 To test the trained agent:")
-    print(f"   python -m mission_gym.scripts.evaluate --model {args.save_path}")
+    # Final summary
+    print()
+    print_divider()
+    print()
+    print(f"  {c.colorize('✅ Training Complete!', c.BOLD, c.BRIGHT_GREEN)}")
+    print()
+    print(f"  {c.colorize('📁 Run Directory:', c.BRIGHT_BLUE)} {run_dir}")
+    print(f"  {c.colorize('📊 Dashboard:', c.BRIGHT_BLUE)} {dashboard_path}")
+    print(f"  {c.colorize('🎮 To evaluate:', c.BRIGHT_BLUE)} python -m mission_gym.scripts.evaluate --model {model_path}")
+    print()
+    print_divider()
+    print()
     
     return 0
 
