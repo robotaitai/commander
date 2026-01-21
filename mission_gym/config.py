@@ -281,34 +281,59 @@ class EngagementConfig:
 @dataclass
 class RewardConfig:
     """Reward function configuration."""
+    # Objective rewards
     capture_progress: float
     win_bonus: float
+    zone_entry_bonus: float
+    zone_time: float
+    
+    # Shaping rewards
+    min_dist_potential: float
+    ring_bonus: float
+    ring_distances: list  # List of distance milestones
+    approach_objective: float
+    spread_formation: float
+    
+    # Penalties
     time_penalty: float
     integrity_loss_penalty: float
     collision_penalty: float
     unit_disabled_penalty: float
     detected_time_penalty: float
+    
+    # Toggles
     enable_detected_penalty: bool
-    approach_objective: float
-    spread_formation: float
     
     @classmethod
     def from_yaml(cls) -> "RewardConfig":
         data = load_yaml("reward.yaml")
-        weights = data["weights"]
+        weights = data.get("weights", {})
         enable = data.get("enable", {})
         shaping = data.get("shaping", {})
+        
         return cls(
-            capture_progress=weights.get("capture_progress", 1.0),
-            win_bonus=weights.get("win_bonus", 100.0),
-            time_penalty=weights.get("time_penalty", -0.01),
-            integrity_loss_penalty=weights.get("integrity_loss_penalty", -0.5),
-            collision_penalty=weights.get("collision_penalty", -5.0),
+            # Objective rewards
+            capture_progress=weights.get("capture_progress", 2.0),
+            win_bonus=weights.get("win_bonus", 200.0),
+            zone_entry_bonus=weights.get("zone_entry_bonus", 20.0),
+            zone_time=weights.get("zone_time", 2.0),
+            
+            # Shaping rewards
+            min_dist_potential=weights.get("min_dist_potential", 0.5),
+            ring_bonus=weights.get("ring_bonus", 5.0),
+            ring_distances=data.get("ring_distances", [80, 60, 40, 25, 15]),
+            approach_objective=weights.get("approach_objective", 0.0),  # Disabled by default
+            spread_formation=weights.get("spread_formation", 0.005),
+            
+            # Penalties
+            time_penalty=weights.get("time_penalty", -0.001),
+            integrity_loss_penalty=weights.get("integrity_loss_penalty", -0.1),
+            collision_penalty=weights.get("collision_penalty", -0.5),
             unit_disabled_penalty=weights.get("unit_disabled_penalty", -20.0),
-            detected_time_penalty=weights.get("detected_time_penalty", -0.1),
+            detected_time_penalty=weights.get("detected_time_penalty", -0.05),
+            
+            # Toggles
             enable_detected_penalty=enable.get("detected_time_penalty", True),
-            approach_objective=shaping.get("approach_objective", 0.01),
-            spread_formation=shaping.get("spread_formation", 0.005),
         )
 
 

@@ -318,6 +318,164 @@ class SpreadFormationReward(RewardComponent):
 
 
 # ============================================================================
+# NEW: Strong rewards for learning to capture objective
+# ============================================================================
+
+class MinDistanceToObjectiveReward(RewardComponent):
+    """
+    Potential-based shaping on MIN distance to objective.
+    
+    Unlike ApproachObjectiveReward which sums all units (can cancel out),
+    this uses the minimum distance - so even if 3 units do dumb things,
+    1 unit moving toward objective creates positive reward.
+    """
+    name = "min_dist_potential"
+    category = RewardCategory.SHAPING
+    color = "#58a6ff"  # Blue
+    description = "Potential shaping on closest unit to objective"
+    icon = "📍"
+    
+    def __init__(self, weight: float = 1.0, enabled: bool = True):
+        super().__init__(weight, enabled)
+        self._prev_min_dist: Optional[float] = None
+    
+    def reset_stats(self):
+        super().reset_stats()
+        self._prev_min_dist = None
+    
+    def calculate(self, ctx: RewardContext) -> float:
+        # Calculate current minimum distance
+        curr_min = float("inf")
+        for a in ctx.attackers:
+            if a.is_disabled:
+                continue
+            d = math.hypot(a.x - ctx.objective.x, a.y - ctx.objective.y)
+            curr_min = min(curr_min, d)
+        
+        if curr_min == float("inf"):
+            return 0.0
+        
+        if self._prev_min_dist is None:
+            self._prev_min_dist = curr_min
+            return 0.0
+        
+        # Positive reward if we moved closer (prev > curr means we got closer)
+        reward = ctx.config.min_dist_potential * (self._prev_min_dist - curr_min)
+        self._prev_min_dist = curr_min
+        return reward
+
+
+class DistanceRingBonus(RewardComponent):
+    """
+    One-time bonuses for crossing distance thresholds.
+    
+    When closest unit crosses rings (80m → 60m → 40m → 25m → 15m),
+    give a bonus. This creates sparse but meaningful "aha" moments.
+    """
+    name = "ring_bonus"
+    category = RewardCategory.BONUS
+    color = "#a371f7"  # Purple
+    description = "Bonus for crossing distance milestones"
+    icon = "🪜"
+    
+    def __init__(self, weight: float = 1.0, enabled: bool = True):
+        super().__init__(weight, enabled)
+        self._best_ring: Optional[int] = None
+    
+    def reset_stats(self):
+        super().reset_stats()
+        self._best_ring = None
+    
+    def calculate(self, ctx: RewardContext) -> float:
+        # Rings defined as distances - crossing each gives bonus
+        rings = getattr(ctx.config, 'ring_distances', [80, 60, 40, 25, 15])
+        if not rings:
+            return 0.0
+        
+        # Find current minimum distance
+        curr_min = min(
+            (math.hypot(a.x - ctx.objective.x, a.y - ctx.objective.y)
+             for a in ctx.attackers if not a.is_disabled),
+            default=float("inf"),
+        )
+        
+        if curr_min == float("inf"):
+            return 0.0
+        
+        # Count how many rings we've crossed (curr_min <= ring_dist)
+        curr_ring = sum(1 for r in rings if curr_min <= r)
+        
+        if self._best_ring is None:
+            self._best_ring = curr_ring
+            return 0.0
+        
+        # Bonus for each NEW ring crossed
+        bonus_steps = max(0, curr_ring - self._best_ring)
+        self._best_ring = max(self._best_ring, curr_ring)
+        
+        return ctx.config.ring_bonus * bonus_steps
+
+
+class ZoneEntryBonus(RewardComponent):
+    """
+    One-time bonus for first entry into objective zone.
+    
+    This gives a strong signal that "going into the zone is GOOD",
+    which helps overcome fear of getting tagged.
+    """
+    name = "zone_entry"
+    category = RewardCategory.OBJECTIVE
+    color = "#3fb950"  # Green
+    description = "Bonus for first entry into objective zone"
+    icon = "🚩"
+    
+    def __init__(self, weight: float = 1.0, enabled: bool = True):
+        super().__init__(weight, enabled)
+        self._entered: bool = False
+    
+    def reset_stats(self):
+        super().reset_stats()
+        self._entered = False
+    
+    def calculate(self, ctx: RewardContext) -> float:
+        if self._entered:
+            return 0.0
+        
+        # Check if any unit is in the objective zone
+        in_zone = any(
+            (not a.is_disabled) and
+            (math.hypot(a.x - ctx.objective.x, a.y - ctx.objective.y) <= ctx.objective.radius)
+            for a in ctx.attackers
+        )
+        
+        if in_zone:
+            self._entered = True
+            return ctx.config.zone_entry_bonus
+        return 0.0
+
+
+class ZoneTimeReward(RewardComponent):
+    """
+    Dense reward proportional to time spent in objective zone.
+    
+    This makes staying in the zone clearly beneficial, even if
+    not yet winning (capture in progress).
+    """
+    name = "zone_time"
+    category = RewardCategory.OBJECTIVE
+    color = "#238636"  # Dark green
+    description = "Reward for time spent in objective zone"
+    icon = "⏳"
+    
+    def calculate(self, ctx: RewardContext) -> float:
+        # capture_progress_delta represents seconds spent capturing
+        delta = getattr(ctx.step_info, 'capture_progress_delta', 0.0)
+        if delta > 0:
+            return ctx.config.zone_time * delta
+        return 0.0
+
+
+# ============================================================================
 # Reward Registry - Manages all reward components
 # ============================================================================
 
@@ -428,20 +586,24 @@ def create_default_registry() -> RewardRegistry:
     """Create a registry with all default reward components."""
     registry = RewardRegistry()
     
-    # Objective rewards
+    # Objective rewards (primary goals)
     registry.register(CaptureProgressReward())
     registry.register(WinBonusReward())
+    registry.register(ZoneEntryBonus())      # NEW: one-time entry bonus
+    registry.register(ZoneTimeReward())       # NEW: dense zone reward
     
-    # Penalties
+    # Strong shaping rewards (guide agent toward objective)
+    registry.register(MinDistanceToObjectiveReward())  # NEW: best approach shaping
+    registry.register(DistanceRingBonus())    # NEW: milestone bonuses
+    registry.register(ApproachObjectiveReward())  # OLD: can disable via config
+    registry.register(SpreadFormationReward())
+    
+    # Penalties (keep small to not dominate)
     registry.register(TimePenaltyReward())
     registry.register(CollisionPenaltyReward())
     registry.register(IntegrityLossPenaltyReward())
     registry.register(UnitDisabledPenaltyReward())
     registry.register(DetectedPenaltyReward())
-    
-    # Shaping rewards
-    registry.register(ApproachObjectiveReward())
-    registry.register(SpreadFormationReward())
     
     return registry
 

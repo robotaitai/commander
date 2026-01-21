@@ -1,4 +1,9 @@
 # Attacker unit type definitions
+# ============================================================================
+# NOTE: TAG and SCAN removed to simplify action space for learning.
+# Re-add once agent reliably captures objectives.
+# ============================================================================
+
 unit_types:
   UGV_A:
     category: ground
@@ -19,8 +24,7 @@ unit_types:
       - TURN_RIGHT
       - BRAKE
       - HOLD
-      - TAG
-      - SCAN
+      # TAG and SCAN removed for simpler learning
 
   UGV_B:
     category: ground
@@ -41,8 +45,7 @@ unit_types:
       - TURN_RIGHT
       - BRAKE
       - HOLD
-      - TAG
-      - SCAN
+      # TAG and SCAN removed for simpler learning
 
   UAV_A:
     category: air
@@ -66,8 +69,7 @@ unit_types:
       - ALT_UP
       - ALT_DOWN
       - HOLD
-      - TAG
-      - SCAN
+      # TAG and SCAN removed for simpler learning
 
   UAV_B:
     category: air
@@ -91,5 +93,4 @@ unit_types:
       - ALT_UP
       - ALT_DOWN
       - HOLD
-      - TAG
-      - SCAN
+      # TAG and SCAN removed for simpler learning

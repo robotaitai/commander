@@ -113,6 +113,59 @@ class TestHTMLMonitorCallback:
             # Run name should appear in title
             assert f'<title>{run_name}' in html, "Run name should be in page title"
 
+    def test_dashboard_action_log(self):
+        """Test that action log is displayed in dashboard."""
+        from mission_gym.scripts.monitoring import HTMLMonitorCallback
+        
+        with tempfile.TemporaryDirectory() as tmpdir:
+            html_path = Path(tmpdir) / "test_dashboard.html"
+            
+            callback = HTMLMonitorCallback(
+                html_path=str(html_path),
+                run_dir=Path(tmpdir),
+            )
+            callback.start_time = datetime.now()
+            callback.num_timesteps = 1000
+            
+            # Add some action log entries
+            for step in range(50):
+                callback.action_log.append({
+                    'timestep': 950 + step,
+                    'actions': [0, 1, 2, 3],  # 4 units
+                    'rewards': [0.1, -0.2, 0.3, -0.1],
+                    'dones': [False, False, False, False],
+                })
+            
+            callback._generate_html()
+            html = html_path.read_text()
+            
+            # Action log should be present
+            assert 'Action Log' in html, "Dashboard should have Action Log section"
+            assert 'action-badge' in html, "Dashboard should have action badges"
+            assert '50 recorded' in html, "Should show number of recorded entries"
+
+    def test_action_log_empty_state(self):
+        """Test action log shows empty state when no actions recorded."""
+        from mission_gym.scripts.monitoring import HTMLMonitorCallback
+        
+        with tempfile.TemporaryDirectory() as tmpdir:
+            html_path = Path(tmpdir) / "test_dashboard.html"
+            
+            callback = HTMLMonitorCallback(
+                html_path=str(html_path),
+                run_dir=Path(tmpdir),
+            )
+            callback.start_time = datetime.now()
+            callback.num_timesteps = 100
+            
+            # No action log entries added
+            callback._generate_html()
+            html = html_path.read_text()
+            
+            # Should show empty state message
+            assert 'Action Log' in html, "Dashboard should have Action Log section"
+            assert 'No actions recorded yet' in html, "Should show empty state message"
+
 
 class TestRunNameGeneration:
     """Test run name generation and format."""

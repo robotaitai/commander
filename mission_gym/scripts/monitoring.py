@@ -18,6 +18,19 @@ import numpy as np
 from stable_baselines3.common.callbacks import BaseCallback
 
 try:
+    from rich.console import Console
+    from rich.table import Table
+    from rich.panel import Panel
+    from rich.layout import Layout
+    from rich.live import Live
+    from rich.text import Text
+    from rich.progress import Progress, SpinnerColumn, BarColumn, TextColumn, TimeElapsedColumn
+    from rich import box
+    RICH_AVAILABLE = True
+except ImportError:
+    RICH_AVAILABLE = False
+
+try:
     import pygame
     PYGAME_AVAILABLE = True
 except ImportError:
@@ -105,9 +118,10 @@ class HTMLMonitorCallback(BaseCallback):
         self.gpu_history: List[Dict] = []
         self.gpu_timestamps: List[str] = []
         
-        # Episode tracking
-        self.current_episode_reward = 0.0
-        self.current_episode_length = 0
+        # Episode tracking - per-environment for vectorized envs
+        self.n_envs = 1  # Will be updated on first step
+        self.current_episode_rewards: List[float] = [0.0]
+        self.current_episode_lengths: List[int] = [0]
         self.episodes_completed = 0
         
         # Stats
@@ -122,6 +136,9 @@ class HTMLMonitorCallback(BaseCallback):
         self.wins = 0
         self.total_episodes = 0
         self.latest_metrics: Optional[Dict] = None
+        
+        # Action log tracking (last 100 timesteps)
+        self.action_log: List[Dict] = []  # Each entry: {timestep, actions, rewards}
         
         # Load config YAML files for display
         self.config_yaml = self._load_config_yamls()
@@ -198,40 +215,66 @@ class HTMLMonitorCallback(BaseCallback):
         rewards = self.locals.get("rewards", [0])
         dones = self.locals.get("dones", [False])
         infos = self.locals.get("infos", [{}])
+        actions = self.locals.get("actions", None)
         
-        for reward, done, info in zip(rewards, dones, infos):
-            self.current_episode_reward += reward
-            self.current_episode_length += 1
+        # Record action log entry (one entry per step across all envs)
+        if actions is not None:
+            action_entry = {
+                "timestep": self.num_timesteps,
+                "actions": actions.tolist() if hasattr(actions, "tolist") else list(actions),
+                "rewards": rewards.tolist() if hasattr(rewards, "tolist") else list(rewards),
+                "dones": dones.tolist() if hasattr(dones, "tolist") else list(dones),
+            }
+            self.action_log.append(action_entry)
+            # Keep last 100 entries
+            if len(self.action_log) > 100:
+                self.action_log = self.action_log[-100:]
+        
+        # Initialize per-env tracking if needed (for vectorized envs)
+        n_envs = len(rewards)
+        if n_envs != self.n_envs:
+            self.n_envs = n_envs
+            self.current_episode_rewards = [0.0] * n_envs
+            self.current_episode_lengths = [0] * n_envs
+        
+        for env_idx, (reward, done, info) in enumerate(zip(rewards, dones, infos)):
+            self.current_episode_rewards[env_idx] += reward
+            self.current_episode_lengths[env_idx] += 1
             
             # Track component breakdown if available
             if "_component_breakdown" in info:
                 self.record_component_breakdown(info["_component_breakdown"])
             
             if done:
-                self.episode_rewards.append(self.current_episode_reward)
-                self.episode_lengths.append(self.current_episode_length)
+                # Record completed episode for this specific env
+                self.episode_rewards.append(self.current_episode_rewards[env_idx])
+                self.episode_lengths.append(self.current_episode_lengths[env_idx])
                 self.episodes_completed += 1
                 
-                # Track episode metrics if available
-                if "episode_metrics" in info:
-                    metrics = info["episode_metrics"]
+                # Track episode metrics - ALWAYS append to keep in sync with episode_rewards
+                metrics = info.get("episode_metrics", {})
+                self.episode_metrics_history.append(metrics)
+                
+                if metrics:
                     self.latest_metrics = metrics
                     self.total_episodes += 1
                     if metrics.get("win", False):
                         self.wins += 1
-                    
-                    # Store in history (keep last 100)
-                    self.episode_metrics_history.append(metrics)
-                    if len(self.episode_metrics_history) > 100:
-                        self.episode_metrics_history = self.episode_metrics_history[-100:]
                 
-                if len(self.episode_rewards) % 10 == 0:
+                # Trim history to last 100 episodes (all lists must stay in sync)
+                if len(self.episode_rewards) > 100:
+                    self.episode_rewards = self.episode_rewards[-100:]
+                    self.episode_lengths = self.episode_lengths[-100:]
+                    self.episode_metrics_history = self.episode_metrics_history[-100:]
+                
+                if self.episodes_completed % 10 == 0:
                     mean_reward = np.mean(self.episode_rewards[-100:])
                     self.mean_rewards.append(mean_reward)
                     self.timesteps_history.append(self.num_timesteps)
                 
-                self.current_episode_reward = 0.0
-                self.current_episode_length = 0
+                # Reset this env's accumulators
+                self.current_episode_rewards[env_idx] = 0.0
+                self.current_episode_lengths[env_idx] = 0
         
         if self.num_timesteps - self.last_update_timestep >= self.update_freq:
             self._generate_html()
@@ -280,13 +323,13 @@ class HTMLMonitorCallback(BaseCallback):
         
         run_name = self.run_dir.name if self.run_dir else "Training Session"
         
-        # Chart data
+        # Chart data - show all history from step 0
         chart_data = {
-            "timesteps": self.timesteps_history[-100:],
-            "mean_rewards": self.mean_rewards[-100:],
+            "timesteps": self.timesteps_history,  # Full history from step 0
+            "mean_rewards": self.mean_rewards,    # Full history
             "eval_timesteps": self.eval_timesteps,
             "eval_rewards": self.eval_rewards,
-            "component_history": {k: v[-50:] for k, v in self.component_history.items()},
+            "component_history": self.component_history,  # Full component history
         }
         
         html = self._build_html_page(
@@ -416,6 +459,12 @@ class HTMLMonitorCallback(BaseCallback):
         
         # Build recent episodes table
         recent_html = self._build_recent_episodes_html()
+        
+        # Build quick commands panel
+        commands_html = self._build_commands_html(run_name)
+        
+        # Build action log panel
+        action_log_html = self._build_action_log_html()
         
         return f'''<!DOCTYPE html>
 <html lang="en">
@@ -830,6 +879,19 @@ class HTMLMonitorCallback(BaseCallback):
             padding: 0.5rem;
             font-size: 0.75rem;
             color: var(--text-secondary);
+        }}
+        
+        .snapshot-header {{
+            font-weight: 600;
+            color: var(--accent-teal);
+            margin-bottom: 0.25rem;
+        }}
+        
+        .snapshot-metrics {{
+            display: flex;
+            gap: 0.5rem;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.65rem;
             font-family: 'JetBrains Mono', monospace;
         }}
         
@@ -1024,6 +1086,12 @@ class HTMLMonitorCallback(BaseCallback):
         
         <!-- Snapshots -->
         {snapshots_html}
+        
+        <!-- Quick Commands -->
+        {commands_html}
+        
+        <!-- Action Log -->
+        {action_log_html}
         
         <!-- Configuration -->
         {config_html}
@@ -1248,10 +1316,24 @@ class HTMLMonitorCallback(BaseCallback):
         
         frames_html = ""
         for frame in latest.get("frames", [])[:6]:
+            step = frame.get("step", 0)
+            pct = frame.get("pct", int(step / 12))  # Estimate if not provided
+            reward = frame.get("reward", 0)
+            distance = frame.get("distance", 0)
+            detected = frame.get("detected", 0)
+            collisions = frame.get("collisions", 0)
+            
             frames_html += f'''
             <div class="snapshot-card">
-                <img src="data:image/png;base64,{frame.get("image", "")}" alt="Step {frame.get("step", 0)}">
-                <div class="snapshot-info">Step {frame.get("step", 0)} • R: {frame.get("reward", 0):.1f}</div>
+                <img src="data:image/png;base64,{frame.get("image", "")}" alt="Step {step}">
+                <div class="snapshot-info">
+                    <div class="snapshot-header">{pct}% • Step {step}</div>
+                    <div class="snapshot-metrics">
+                        <span>R: {reward:.1f}</span>
+                        <span>📏 {distance:.0f}m</span>
+                        <span>💥 {collisions}</span>
+                    </div>
+                </div>
             </div>'''
         
         return f'''
@@ -1349,30 +1431,64 @@ class HTMLMonitorCallback(BaseCallback):
         </div>'''
     
     def _build_recent_episodes_html(self) -> str:
-        """Build recent episodes table HTML."""
+        """Build recent episodes table HTML with full metrics."""
         if not self.episode_rewards:
             return ""
         
-        recent = list(zip(
-            range(max(0, len(self.episode_rewards) - 10), len(self.episode_rewards)),
-            self.episode_rewards[-10:],
-            self.episode_lengths[-10:]
-        ))[::-1]
+        # Get last 10 episodes with their metrics
+        # All three lists are now kept in sync, so we can use the same indices
+        n_recent = min(10, len(self.episode_rewards))
         
         rows_html = ""
-        for ep, reward, length in recent:
-            if reward > 50:
-                badge = '<span class="badge badge-success">WIN</span>'
+        for i in range(n_recent - 1, -1, -1):  # Reverse order (newest first)
+            # Use negative indexing to always get the most recent episodes
+            list_idx = -(n_recent - i)
+            reward = self.episode_rewards[list_idx]
+            length = self.episode_lengths[list_idx]
+            
+            # Get episode metrics - lists are now synced, so same index works
+            metrics = self.episode_metrics_history[list_idx] if self.episode_metrics_history else {}
+            
+            # Calculate the actual episode number for display
+            ep_num = self.episodes_completed + list_idx + 1
+            
+            # Status badge based on actual win/termination
+            win = metrics.get("win", False)
+            reason = metrics.get("terminated_reason", "unknown")
+            
+            if win:
+                badge = '<span class="badge badge-success">🏆 WIN</span>'
+            elif reason == "timeout":
+                badge = '<span class="badge badge-warning">⏱️ TIMEOUT</span>'
+            elif reason == "all_disabled":
+                badge = '<span class="badge badge-danger">💔 DISABLED</span>'
             elif reward > 0:
-                badge = '<span class="badge badge-warning">PARTIAL</span>'
+                badge = '<span class="badge badge-warning">⚡ PARTIAL</span>'
             else:
-                badge = '<span class="badge badge-danger">LOSS</span>'
+                badge = '<span class="badge badge-danger">❌ LOSS</span>'
+            
+            # Extract key metrics
+            distance = metrics.get("distance_total", 0)
+            zone_time = metrics.get("time_in_objective_zone", 0)
+            detected_pct = metrics.get("detected_time_pct", 0)
+            collisions = metrics.get("collisions_total", 0)
+            capture_prog = metrics.get("final_capture_progress", 0)
+            tag_rate = metrics.get("tag_hit_rate_attacker", 0) * 100
+            
+            # Color-code detected time
+            detected_color = "var(--success)" if detected_pct < 20 else ("var(--warning)" if detected_pct < 50 else "var(--danger)")
+            collision_color = "var(--success)" if collisions == 0 else ("var(--warning)" if collisions < 50 else "var(--danger)")
             
             rows_html += f'''
             <tr>
-                <td>#{ep + 1}</td>
-                <td style="font-family: 'JetBrains Mono', monospace;">{reward:.1f}</td>
+                <td>#{ep_num}</td>
+                <td style="font-family: 'JetBrains Mono', monospace; color: {'var(--success)' if reward > 50 else ('var(--warning)' if reward > 0 else 'var(--danger)')};">{reward:.1f}</td>
                 <td>{length}</td>
+                <td style="font-family: 'JetBrains Mono', monospace;">{distance:.0f}m</td>
+                <td style="font-family: 'JetBrains Mono', monospace;">{zone_time:.1f}s</td>
+                <td style="font-family: 'JetBrains Mono', monospace; color: {detected_color};">{detected_pct:.0f}%</td>
+                <td style="font-family: 'JetBrains Mono', monospace; color: {collision_color};">{collisions}</td>
+                <td style="font-family: 'JetBrains Mono', monospace;">{capture_prog:.0f}%</td>
                 <td>{badge}</td>
             </tr>'''
         
@@ -1381,13 +1497,18 @@ class HTMLMonitorCallback(BaseCallback):
             <div class="panel-header">
                 <div class="panel-title"><span class="icon">📊</span> Recent Episodes</div>
             </div>
-            <div class="panel-body" style="padding: 0;">
+            <div class="panel-body" style="padding: 0; overflow-x: auto;">
                 <table>
                     <thead>
                         <tr>
                             <th>Episode</th>
                             <th>Reward</th>
-                            <th>Length</th>
+                            <th>Steps</th>
+                            <th>Distance</th>
+                            <th>Zone Time</th>
+                            <th>Detected</th>
+                            <th>Collisions</th>
+                            <th>Capture</th>
                             <th>Status</th>
                         </tr>
                     </thead>
@@ -1397,6 +1518,241 @@ class HTMLMonitorCallback(BaseCallback):
                 </table>
             </div>
         </div>'''
+    
+    def _build_commands_html(self, run_name: str) -> str:
+        """Build quick commands panel with useful scripts."""
+        run_path = f"runs/{run_name}"
+        model_path = f"{run_path}/final_model"
+        checkpoint_path = f"{run_path}/checkpoints"
+        logs_path = f"{run_path}/logs"
+        
+        commands = [
+            {
+                "name": "🎮 Evaluate Model",
+                "desc": "Test trained model with visualization",
+                "cmd": f"python -m mission_gym.scripts.evaluate --model {model_path}",
+            },
+            {
+                "name": "🎬 Record Video",
+                "desc": "Record evaluation episodes to video",
+                "cmd": f"python -m mission_gym.scripts.record_video --model {model_path} --episodes 3",
+            },
+            {
+                "name": "🕹️ Play Manual",
+                "desc": "Control units manually with keyboard",
+                "cmd": "python -m mission_gym.scripts.play_manual",
+            },
+            {
+                "name": "📊 TensorBoard",
+                "desc": "View training graphs in browser",
+                "cmd": f"tensorboard --logdir {logs_path}",
+            },
+            {
+                "name": "📋 List Checkpoints",
+                "desc": "Show saved model checkpoints",
+                "cmd": f"ls -la {checkpoint_path}",
+            },
+            {
+                "name": "🚀 Continue Training",
+                "desc": "Resume training from this model",
+                "cmd": f"python -m mission_gym.scripts.train_ppo --timesteps 100000 --run-name {run_name}-continued",
+            },
+        ]
+        
+        commands_html = ""
+        for cmd in commands:
+            commands_html += f'''
+            <div class="command-card">
+                <div class="command-header">
+                    <span class="command-name">{cmd["name"]}</span>
+                    <button class="copy-btn" onclick="copyCommand(this)" data-cmd="{cmd["cmd"]}">📋 Copy</button>
+                </div>
+                <div class="command-desc">{cmd["desc"]}</div>
+                <code class="command-code">{cmd["cmd"]}</code>
+            </div>'''
+        
+        return f'''
+        <div class="panel" style="margin-bottom: 2rem;">
+            <div class="panel-header">
+                <div class="panel-title"><span class="icon">⚡</span> Quick Commands</div>
+            </div>
+            <div class="panel-body">
+                <div class="commands-grid">
+                    {commands_html}
+                </div>
+            </div>
+        </div>
+        <style>
+            .commands-grid {{
+                display: grid;
+                grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+                gap: 1rem;
+            }}
+            .command-card {{
+                background: var(--bg-card);
+                border: 1px solid var(--border);
+                border-radius: 8px;
+                padding: 1rem;
+            }}
+            .command-card:hover {{
+                border-color: var(--accent-teal);
+            }}
+            .command-header {{
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                margin-bottom: 0.5rem;
+            }}
+            .command-name {{
+                font-weight: 600;
+                color: var(--accent-teal);
+            }}
+            .copy-btn {{
+                background: var(--bg-panel);
+                border: 1px solid var(--border);
+                border-radius: 4px;
+                padding: 0.25rem 0.5rem;
+                color: var(--text-secondary);
+                cursor: pointer;
+                font-size: 0.75rem;
+            }}
+            .copy-btn:hover {{
+                background: var(--accent-teal);
+                color: var(--bg-dark);
+                border-color: var(--accent-teal);
+            }}
+            .copy-btn.copied {{
+                background: var(--success);
+                border-color: var(--success);
+                color: white;
+            }}
+            .command-desc {{
+                color: var(--text-secondary);
+                font-size: 0.8rem;
+                margin-bottom: 0.5rem;
+            }}
+            .command-code {{
+                display: block;
+                background: var(--bg-dark);
+                border: 1px solid var(--border);
+                border-radius: 4px;
+                padding: 0.5rem;
+                font-family: 'JetBrains Mono', monospace;
+                font-size: 0.75rem;
+                color: var(--accent-cyan);
+                overflow-x: auto;
+                white-space: nowrap;
+            }}
+        </style>
+        <script>
+            function copyCommand(btn) {{
+                const cmd = btn.getAttribute('data-cmd');
+                navigator.clipboard.writeText(cmd).then(() => {{
+                    btn.textContent = '✓ Copied!';
+                    btn.classList.add('copied');
+                    setTimeout(() => {{
+                        btn.textContent = '📋 Copy';
+                        btn.classList.remove('copied');
+                    }}, 2000);
+                }});
+            }}
+        </script>'''
+    
+    def _build_action_log_html(self) -> str:
+        """Build action log panel showing last 100 commands."""
+        if not self.action_log:
+            return '''
+        <div class="panel">
+            <div class="panel-header">
+                <div class="panel-title"><span class="icon">📜</span> Action Log (Last 100)</div>
+            </div>
+            <div class="panel-body">
+                <p style="color: var(--text-secondary);">No actions recorded yet. Training will populate this log.</p>
+            </div>
+        </div>'''
+        
+        # Action name mapping (index to name for display)
+        action_names = {
+            0: "NOOP", 1: "THROT↑", 2: "THROT↓", 3: "LEFT", 4: "RIGHT", 
+            5: "BRAKE", 6: "HOLD", 7: "ALT↑", 8: "ALT↓"
+        }
+        
+        # Build table rows (most recent first)
+        rows_html = ""
+        for entry in reversed(self.action_log[-50:]):  # Show last 50 in table
+            timestep = entry["timestep"]
+            actions = entry["actions"]
+            rewards = entry["rewards"]
+            dones = entry.get("dones", [])
+            
+            # Format actions as colored badges per unit
+            action_badges = ""
+            for i, action in enumerate(actions):
+                action_name = action_names.get(action, f"A{action}")
+                # Color code by action type
+                if action == 0:  # NOOP
+                    color = "var(--text-dim)"
+                elif action in [1, 2]:  # Throttle
+                    color = "var(--accent-cyan)"
+                elif action in [3, 4]:  # Turn
+                    color = "var(--accent-teal)"
+                elif action in [5, 6]:  # Brake/Hold
+                    color = "var(--accent-purple)"
+                else:  # Alt
+                    color = "var(--accent-orange)"
+                action_badges += f'<span class="action-badge" style="background: {color}20; color: {color}; border: 1px solid {color}40;">{action_name}</span>'
+            
+            # Format rewards
+            total_reward = sum(rewards) if rewards else 0
+            reward_color = "var(--success)" if total_reward > 0 else ("var(--danger)" if total_reward < 0 else "var(--text-dim)")
+            
+            # Check for episode end
+            done_marker = ""
+            if any(dones):
+                done_marker = '<span style="color: var(--warning); margin-left: 0.5rem;">🏁</span>'
+            
+            rows_html += f'''
+                <tr>
+                    <td style="font-family: 'JetBrains Mono', monospace; color: var(--text-secondary);">{timestep:,}</td>
+                    <td><div class="action-group">{action_badges}</div></td>
+                    <td style="color: {reward_color}; font-family: 'JetBrains Mono', monospace;">{total_reward:+.3f}{done_marker}</td>
+                </tr>'''
+        
+        return f'''
+        <div class="panel">
+            <div class="panel-header">
+                <div class="panel-title"><span class="icon">📜</span> Action Log (Last 50 Steps)</div>
+                <span class="badge" style="background: var(--bg-card);">{len(self.action_log)} recorded</span>
+            </div>
+            <div class="panel-body" style="max-height: 400px; overflow-y: auto;">
+                <table style="font-size: 0.8rem;">
+                    <thead>
+                        <tr>
+                            <th style="width: 100px;">Step</th>
+                            <th>Unit Actions</th>
+                            <th style="width: 100px;">Reward</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {rows_html}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        <style>
+            .action-group {{
+                display: flex;
+                gap: 0.25rem;
+                flex-wrap: wrap;
+            }}
+            .action-badge {{
+                padding: 0.15rem 0.4rem;
+                border-radius: 4px;
+                font-family: 'JetBrains Mono', monospace;
+                font-size: 0.7rem;
+                font-weight: 500;
+            }}
+        </style>'''
     
     def _build_config_html(self) -> str:
         """Build configuration viewer HTML."""
@@ -1455,7 +1811,9 @@ class EvalWithMonitorCallback(BaseCallback):
         self.eval_freq = eval_freq
         self.last_eval_timestep = 0
         self.capture_snapshots = capture_snapshots and PYGAME_AVAILABLE
-        self.snapshot_steps = snapshot_steps or [0, 5, 15, 30, 50, 100]
+        # Capture snapshots at key episode percentages (1200 steps = 5 min episode)
+        # 10%, 30%, 50%, 75%, 100% of episode = steps 120, 360, 600, 900, 1199
+        self.snapshot_steps = snapshot_steps or [120, 360, 600, 900, 1199]
         
         self.snapshots: List[Dict] = []
         self.max_snapshots = 8
@@ -1484,7 +1842,18 @@ class EvalWithMonitorCallback(BaseCallback):
                 done = terminated or truncated
                 
                 if ep_idx == 0 and self.capture_snapshots and step in self.snapshot_steps:
-                    frame = self._capture_frame(step, total_reward, info)
+                    # Calculate episode percentage
+                    max_steps = 1200  # Default episode length
+                    try:
+                        max_steps = self.eval_env.max_steps
+                    except:
+                        pass
+                    pct = int(step / max_steps * 100)
+                    
+                    # Get metrics from info
+                    metrics = info.get("episode_metrics", {})
+                    
+                    frame = self._capture_frame(step, total_reward, info, pct, metrics)
                     if frame:
                         captured_frames.append(frame)
                 
@@ -1508,7 +1877,7 @@ class EvalWithMonitorCallback(BaseCallback):
         
         self.html_monitor.add_eval_result(mean_reward, self.num_timesteps, self.snapshots)
     
-    def _capture_frame(self, step: int, reward: float, info: dict) -> Optional[Dict]:
+    def _capture_frame(self, step: int, reward: float, info: dict, pct: int = 0, metrics: dict = None) -> Optional[Dict]:
         """Capture a frame from the environment as base64."""
         if not PYGAME_AVAILABLE:
             return None
@@ -1537,10 +1906,19 @@ class EvalWithMonitorCallback(BaseCallback):
             
             b64 = base64.b64encode(png_bytes.read()).decode('utf-8')
             
+            # Extract key metrics for display
+            distance = metrics.get("distance_total", 0) if metrics else 0
+            detected = metrics.get("detected_time_pct", 0) if metrics else 0
+            collisions = metrics.get("collisions_total", 0) if metrics else 0
+            
             return {
                 "step": step,
+                "pct": pct,
                 "reward": reward,
                 "image": b64,
+                "distance": distance,
+                "detected": detected,
+                "collisions": collisions,
             }
         except Exception as e:
             if self.verbose > 0:
@@ -1623,23 +2001,14 @@ class MetricsCallback(BaseCallback):
     """
     Callback that logs episode metrics to TensorBoard and prints beautiful console output.
     
+    Uses Rich library for beautiful formatted tables and panels.
+    
     Logs key performance indicators from the EpisodeMetrics collected by the env:
     - Mission outcomes (win rate, time to capture)
     - Engagement stats (tag hit rates)
     - Detection/stealth metrics
     - Fleet performance (distance, collisions)
     """
-    
-    # ANSI colors for console output
-    RESET = "\033[0m"
-    BOLD = "\033[1m"
-    DIM = "\033[2m"
-    GREEN = "\033[92m"
-    YELLOW = "\033[93m"
-    RED = "\033[91m"
-    CYAN = "\033[96m"
-    MAGENTA = "\033[95m"
-    BLUE = "\033[94m"
     
     def __init__(self, verbose: int = 0, print_freq: int = 10):
         super().__init__(verbose)
@@ -1648,14 +2017,10 @@ class MetricsCallback(BaseCallback):
         self.print_freq = print_freq
         self.recent_metrics: List[Dict] = []
         self.last_print_episode = 0
-    
-    def _colorize(self, text: str, *colors) -> str:
-        """Apply ANSI colors to text."""
-        color_str = "".join(colors)
-        return f"{color_str}{text}{self.RESET}"
+        self.console = Console() if RICH_AVAILABLE else None
     
     def _print_metrics_summary(self) -> None:
-        """Print a beautiful summary of recent metrics to console."""
+        """Print a beautiful summary of recent metrics using Rich."""
         if not self.recent_metrics:
             return
         
@@ -1664,45 +2029,115 @@ class MetricsCallback(BaseCallback):
         # Calculate aggregates
         wins = sum(1 for m in recent if m.get("win", False))
         win_rate = wins / len(recent) * 100
+        overall_win_rate = self.wins / self.episode_count * 100 if self.episode_count > 0 else 0
         avg_capture = sum(m.get("final_capture_progress", 0) for m in recent) / len(recent)
+        avg_zone_time = sum(m.get("time_in_objective_zone", 0) for m in recent) / len(recent)
         avg_distance = sum(m.get("distance_total", 0) for m in recent) / len(recent)
         avg_detected = sum(m.get("detected_time_pct", 0) for m in recent) / len(recent)
         total_collisions = sum(m.get("collisions_total", 0) for m in recent)
+        avg_tag_rate = sum(m.get("tag_hit_rate_attacker", 0) for m in recent) / len(recent) * 100
+        avg_steps = sum(m.get("episode_steps", 0) for m in recent) / len(recent)
         
         # Termination reasons
-        reasons = {}
+        reasons = {"captured": 0, "timeout": 0, "all_disabled": 0}
         for m in recent:
-            r = m.get("terminated_reason", "?")
+            r = m.get("terminated_reason", "unknown")
             reasons[r] = reasons.get(r, 0) + 1
         
-        # Build reason string
-        reason_parts = []
-        for r, count in reasons.items():
-            if r == "captured":
-                reason_parts.append(self._colorize(f"🏆{count}", self.GREEN))
-            elif r == "timeout":
-                reason_parts.append(self._colorize(f"⏱️{count}", self.YELLOW))
-            else:
-                reason_parts.append(self._colorize(f"💔{count}", self.RED))
-        reason_str = " ".join(reason_parts)
-        
-        # Color win rate
-        if win_rate >= 50:
-            wr_color = self.GREEN
-        elif win_rate >= 20:
-            wr_color = self.YELLOW
+        if RICH_AVAILABLE and self.console:
+            self._print_rich_summary(
+                recent, wins, win_rate, overall_win_rate, avg_capture, avg_zone_time,
+                avg_distance, avg_detected, total_collisions, avg_tag_rate, avg_steps, reasons
+            )
         else:
-            wr_color = self.RED
+            self._print_simple_summary(
+                recent, wins, win_rate, avg_capture, avg_distance, avg_detected, 
+                total_collisions, reasons
+            )
+    
+    def _print_rich_summary(
+        self, recent, wins, win_rate, overall_win_rate, avg_capture, avg_zone_time,
+        avg_distance, avg_detected, total_collisions, avg_tag_rate, avg_steps, reasons
+    ) -> None:
+        """Print beautiful Rich-formatted summary."""
+        # Win rate color
+        if win_rate >= 50:
+            wr_style = "bold green"
+        elif win_rate >= 20:
+            wr_style = "bold yellow"
+        else:
+            wr_style = "bold red"
         
-        # Print summary
+        # Create main metrics table
+        table = Table(
+            title=f"[bold cyan]📊 Episode Metrics[/] [dim](#{self.episode_count - len(recent) + 1}-{self.episode_count})[/]",
+            box=box.ROUNDED,
+            border_style="cyan",
+            header_style="bold white",
+            show_header=True,
+            padding=(0, 1),
+        )
+        
+        # KPI section
+        table.add_column("🎯 KPI", style="bold", width=14)
+        table.add_column("Value", justify="right", width=10)
+        table.add_column("🚀 Fleet", style="bold", width=14)
+        table.add_column("Value", justify="right", width=10)
+        table.add_column("⚔️ Combat", style="bold", width=14)
+        table.add_column("Value", justify="right", width=10)
+        
+        # Outcome string
+        outcome_parts = []
+        if reasons.get("captured", 0) > 0:
+            outcome_parts.append(f"[green]🏆 {reasons['captured']}[/]")
+        if reasons.get("timeout", 0) > 0:
+            outcome_parts.append(f"[yellow]⏱️ {reasons['timeout']}[/]")
+        if reasons.get("all_disabled", 0) > 0:
+            outcome_parts.append(f"[red]💔 {reasons['all_disabled']}[/]")
+        outcome_str = " ".join(outcome_parts) if outcome_parts else "[dim]none[/]"
+        
+        # Add rows
+        table.add_row(
+            "Win Rate", f"[{wr_style}]{win_rate:.0f}%[/]",
+            "Distance", f"[cyan]{avg_distance:.0f}m[/]",
+            "Tag Rate", f"[magenta]{avg_tag_rate:.0f}%[/]",
+        )
+        table.add_row(
+            "Overall", f"[cyan]{self.wins}/{self.episode_count}[/]",
+            "Collisions", f"[{'red' if total_collisions > 10 else 'green'}]{total_collisions}[/]",
+            "Detected", f"[{'red' if avg_detected > 50 else 'green'}]{avg_detected:.0f}%[/]",
+        )
+        table.add_row(
+            "Capture", f"[green]{avg_capture:.1f}s[/]",
+            "Zone Time", f"[cyan]{avg_zone_time:.1f}s[/]",
+            "Outcomes", outcome_str,
+        )
+        table.add_row(
+            "Steps/Ep", f"[dim]{avg_steps:.0f}[/]",
+            "", "",
+            "", "",
+        )
+        
+        self.console.print()
+        self.console.print(table)
+    
+    def _print_simple_summary(
+        self, recent, wins, win_rate, avg_capture, avg_distance, avg_detected, 
+        total_collisions, reasons
+    ) -> None:
+        """Fallback simple summary without Rich."""
         print()
-        print(f"  {self._colorize('─' * 60, self.DIM)}")
-        print(f"  {self._colorize('📊 METRICS', self.BOLD, self.CYAN)} {self._colorize(f'(Episodes {self.episode_count - len(recent) + 1}-{self.episode_count})', self.DIM)}")
-        print(f"  {self._colorize('─' * 60, self.DIM)}")
-        print(f"    {self._colorize('Win Rate:', self.BOLD)} {self._colorize(f'{win_rate:5.1f}%', wr_color)} ({wins}/{len(recent)})  {self._colorize('│', self.DIM)}  {self._colorize('Overall:', self.BOLD)} {self._colorize(f'{self.wins}/{self.episode_count}', self.CYAN)}")
-        print(f"    {self._colorize('Capture:', self.BOLD)}  {avg_capture:5.1f}s   {self._colorize('│', self.DIM)}  {self._colorize('Distance:', self.BOLD)} {avg_distance:6.0f}m  {self._colorize('│', self.DIM)}  {self._colorize('Detected:', self.BOLD)} {avg_detected:4.0f}%")
-        print(f"    {self._colorize('Outcomes:', self.BOLD)} {reason_str}  {self._colorize('│', self.DIM)}  {self._colorize('Collisions:', self.BOLD)} {total_collisions}")
-        print(f"  {self._colorize('─' * 60, self.DIM)}")
+        print(f"  {'─' * 60}")
+        print(f"  📊 METRICS (Episodes {self.episode_count - len(recent) + 1}-{self.episode_count})")
+        print(f"  {'─' * 60}")
+        print(f"    Win Rate: {win_rate:5.1f}% ({wins}/{len(recent)})  │  Overall: {self.wins}/{self.episode_count}")
+        print(f"    Capture:  {avg_capture:5.1f}s   │  Distance: {avg_distance:6.0f}m  │  Detected: {avg_detected:4.0f}%")
+        outcome_parts = []
+        for r, count in reasons.items():
+            if count > 0:
+                outcome_parts.append(f"{r}:{count}")
+        print(f"    Outcomes: {' '.join(outcome_parts)}  │  Collisions: {total_collisions}")
+        print(f"  {'─' * 60}")
     
     def _on_step(self) -> bool:
         """Log metrics from completed episodes."""
@@ -1772,3 +2207,365 @@ class MetricsCallback(BaseCallback):
             self.logger.record(f"outcome/is_{reason}", 1.0)
         
         return True
+
+
+class RichOutputFormat:
+    """
+    Custom SB3 output format using Rich for beautiful console logging.
+    
+    Replaces the default dashed-box format with modern Rich tables grouped by category.
+    """
+    
+    # Category configuration: (title, style, icon)
+    CATEGORIES = {
+        "kpi": ("🎯 Key Performance", "bold cyan", "cyan"),
+        "fleet": ("🚀 Fleet Status", "bold blue", "blue"),
+        "engagement": ("⚔️  Engagement", "bold magenta", "magenta"),
+        "stealth": ("👁️  Detection", "bold yellow", "yellow"),
+        "safety": ("🛡️  Safety", "bold red", "red"),
+        "outcome": ("📋 Outcome", "bold green", "green"),
+        "train": ("🧠 Training", "bold white", "white"),
+        "time": ("⏱️  Timing", "dim", "dim"),
+        "rollout": ("📦 Rollout", "bold", "white"),
+    }
+    
+    def __init__(self, suppress_categories: Optional[List[str]] = None):
+        """
+        Args:
+            suppress_categories: List of categories to not print (e.g., ["time", "rollout"])
+        """
+        self.console = Console() if RICH_AVAILABLE else None
+        self.suppress_categories = set(suppress_categories or [])
+    
+    def write(self, key_values: Dict[str, Any], key_excluded: Dict[str, bool], step: int) -> None:
+        """Write logged values using Rich formatting."""
+        if not RICH_AVAILABLE or not self.console:
+            self._write_simple(key_values, step)
+            return
+        
+        # Group metrics by category
+        categories: Dict[str, Dict[str, Any]] = {}
+        uncategorized: Dict[str, Any] = {}
+        
+        for key, value in sorted(key_values.items()):
+            if key_excluded.get(key, False):
+                continue
+            
+            # Skip step key
+            if key == "step":
+                continue
+            
+            # Parse category from key (e.g., "kpi/win_rate" -> "kpi", "win_rate")
+            if "/" in key:
+                cat, metric = key.split("/", 1)
+            else:
+                cat, metric = "", key
+            
+            # Skip suppressed categories
+            if cat in self.suppress_categories:
+                continue
+            
+            if cat in self.CATEGORIES:
+                if cat not in categories:
+                    categories[cat] = {}
+                categories[cat][metric] = value
+            else:
+                uncategorized[key] = value
+        
+        # If nothing to print, skip
+        if not categories and not uncategorized:
+            return
+        
+        self.console.print()
+        
+        # Create a grid layout
+        main_table = Table(
+            title=f"[bold cyan]━━━ Training Step {step:,} ━━━[/]",
+            box=box.SIMPLE,
+            border_style="dim",
+            show_header=False,
+            padding=(0, 1),
+            expand=False,
+        )
+        main_table.add_column("", width=40)
+        main_table.add_column("", width=40)
+        
+        # Process categories in pairs for 2-column layout
+        cat_order = ["kpi", "fleet", "engagement", "stealth", "safety", "outcome", "train", "time", "rollout"]
+        active_cats = [c for c in cat_order if c in categories]
+        
+        # Pair up categories
+        pairs = []
+        for i in range(0, len(active_cats), 2):
+            left = active_cats[i] if i < len(active_cats) else None
+            right = active_cats[i + 1] if i + 1 < len(active_cats) else None
+            pairs.append((left, right))
+        
+        for left_cat, right_cat in pairs:
+            left_panel = self._make_category_panel(left_cat, categories.get(left_cat, {})) if left_cat else ""
+            right_panel = self._make_category_panel(right_cat, categories.get(right_cat, {})) if right_cat else ""
+            main_table.add_row(left_panel, right_panel)
+        
+        # Add uncategorized if any
+        if uncategorized:
+            uncat_panel = self._make_category_panel("other", uncategorized, title="📎 Other", style="dim")
+            main_table.add_row(uncat_panel, "")
+        
+        self.console.print(main_table)
+    
+    def _make_category_panel(
+        self, category: str, metrics: Dict[str, Any], title: Optional[str] = None, style: Optional[str] = None
+    ) -> Panel:
+        """Create a Rich panel for a metrics category."""
+        if category in self.CATEGORIES:
+            cat_title, cat_style, border_style = self.CATEGORIES[category]
+        else:
+            cat_title = title or category.capitalize()
+            cat_style = style or "white"
+            border_style = "dim"
+        
+        # Build metrics table
+        table = Table(box=None, show_header=False, padding=(0, 1), expand=True)
+        table.add_column("Metric", style="dim", width=22)
+        table.add_column("Value", justify="right", width=12)
+        
+        for metric, value in metrics.items():
+            # Format value
+            formatted = self._format_value(metric, value)
+            # Clean metric name
+            clean_metric = metric.replace("_", " ").title()
+            table.add_row(clean_metric, formatted)
+        
+        return Panel(
+            table,
+            title=f"[{cat_style}]{cat_title}[/]",
+            border_style=border_style,
+            padding=(0, 1),
+        )
+    
+    def _format_value(self, metric: str, value: Any) -> str:
+        """Format a metric value with appropriate coloring and precision."""
+        if isinstance(value, bool):
+            return "[green]✓[/]" if value else "[red]✗[/]"
+        elif isinstance(value, float):
+            # Color based on metric name hints
+            if "rate" in metric or "pct" in metric:
+                # Percentage-like values
+                color = "green" if value >= 0.5 else ("yellow" if value >= 0.2 else "red")
+                return f"[{color}]{value:.1%}[/]"
+            elif "loss" in metric:
+                return f"[yellow]{value:.4f}[/]"
+            elif "time" in metric or "elapsed" in metric:
+                return f"[dim]{value:.1f}[/]"
+            elif value >= 1000:
+                return f"[cyan]{value:,.0f}[/]"
+            elif value < 0.01 and value != 0:
+                return f"[dim]{value:.2e}[/]"
+            else:
+                return f"{value:.3g}"
+        elif isinstance(value, int):
+            if value >= 1000:
+                return f"[cyan]{value:,}[/]"
+            return str(value)
+        else:
+            return str(value)
+    
+    def _write_simple(self, key_values: Dict[str, Any], step: int) -> None:
+        """Fallback simple output without Rich."""
+        print(f"\n--- Step {step} ---")
+        for key, value in sorted(key_values.items()):
+            if isinstance(value, float):
+                print(f"  {key}: {value:.4f}")
+            else:
+                print(f"  {key}: {value}")
+    
+    def close(self) -> None:
+        """Cleanup."""
+        pass
+
+
+class RichTrainingCallback(BaseCallback):
+    """
+    Callback that prints training statistics with Rich formatting.
+    
+    Use this with verbose=0 on the model to replace SB3's default dashed-box output
+    with beautiful Rich tables.
+    """
+    
+    def __init__(self, print_freq: int = 1, verbose: int = 0):
+        """
+        Args:
+            print_freq: Print every N training iterations (default: every iteration)
+            verbose: Verbosity level
+        """
+        super().__init__(verbose)
+        self.print_freq = print_freq
+        self.console = Console() if RICH_AVAILABLE else None
+        self.iteration_count = 0
+        self.training_start_time: Optional[datetime] = None
+        
+    def _on_training_start(self) -> None:
+        """Called when training starts."""
+        self.training_start_time = datetime.now()
+        if self.console and RICH_AVAILABLE:
+            self.console.print()
+            self.console.print("[bold cyan]━━━ Training Started ━━━[/]")
+            self.console.print()
+    
+    def _on_rollout_end(self) -> None:
+        """Called at the end of a rollout - this is when SB3 normally prints stats."""
+        self.iteration_count += 1
+        
+        if self.iteration_count % self.print_freq != 0:
+            return
+        
+        if not RICH_AVAILABLE or not self.console:
+            return
+        
+        # Get training info from the model
+        try:
+            # Access the logger's recorded values
+            if hasattr(self.model, "logger") and hasattr(self.model.logger, "name_to_value"):
+                values = dict(self.model.logger.name_to_value)
+            else:
+                values = {}
+            
+            # Calculate FPS and timing
+            elapsed_sec = (datetime.now() - self.training_start_time).total_seconds() if self.training_start_time else 1
+            fps = self.num_timesteps / max(1, elapsed_sec)
+            
+            # Add timing info to values
+            values["_fps"] = fps
+            values["_elapsed"] = elapsed_sec
+            
+            # Build training stats table
+            self._print_training_stats(values)
+            
+        except Exception as e:
+            # Fallback - just print basic info
+            self.console.print(f"[dim]Step {self.num_timesteps:,}[/]")
+    
+    def _print_training_stats(self, values: Dict[str, Any]) -> None:
+        """Print training statistics in a beautiful Rich format."""
+        
+        # Create compact training panel
+        table = Table(
+            title=f"[bold cyan]🧠 Training Update[/] [dim]#{self.iteration_count}[/]",
+            box=box.ROUNDED,
+            border_style="cyan",
+            show_header=True,
+            header_style="bold",
+            padding=(0, 1),
+            expand=False,
+        )
+        
+        table.add_column("Metric", style="dim", width=18)
+        table.add_column("Value", justify="right", width=12)
+        table.add_column("Metric", style="dim", width=18)
+        table.add_column("Value", justify="right", width=12)
+        
+        # Key metrics to show - use our calculated values
+        fps = values.get("_fps", values.get("time/fps", 0))
+        elapsed = values.get("_elapsed", values.get("time/time_elapsed", 0))
+        
+        # Format elapsed time nicely
+        if elapsed >= 3600:
+            elapsed_str = f"{elapsed/3600:.1f}h"
+        elif elapsed >= 60:
+            elapsed_str = f"{elapsed/60:.1f}m"
+        else:
+            elapsed_str = f"{elapsed:.0f}s"
+        
+        metrics = [
+            ("timesteps", self.num_timesteps, "iterations", self.iteration_count),
+            ("fps", f"{fps:.0f}", "elapsed", elapsed_str),
+        ]
+        
+        # Add training metrics if available
+        if "train/policy_gradient_loss" in values:
+            pg_loss = values.get("train/policy_gradient_loss", 0)
+            vf_loss = values.get("train/value_loss", 0)
+            entropy = values.get("train/entropy_loss", 0)
+            kl = values.get("train/approx_kl", 0)
+            clip = values.get("train/clip_fraction", 0)
+            explained_var = values.get("train/explained_variance", 0)
+            
+            # Color-code based on values
+            kl_color = "green" if kl < 0.02 else ("yellow" if kl < 0.05 else "red")
+            ev_color = "green" if explained_var > 0.8 else ("yellow" if explained_var > 0.5 else "red")
+            
+            metrics.extend([
+                ("policy_loss", f"{pg_loss:.4f}", "value_loss", f"{vf_loss:.2f}"),
+                ("entropy", f"{entropy:.2f}", f"[{kl_color}]approx_kl[/]", f"[{kl_color}]{kl:.4f}[/]"),
+                ("clip_frac", f"{clip:.1%}", f"[{ev_color}]expl_var[/]", f"[{ev_color}]{explained_var:.2%}[/]"),
+            ])
+        
+        for m1, v1, m2, v2 in metrics:
+            # Format values
+            if isinstance(v1, (int, float)) and not isinstance(v1, bool):
+                if isinstance(v1, float):
+                    v1_str = f"{v1:,.2f}" if v1 >= 100 else f"{v1:.4f}"
+                else:
+                    v1_str = f"{v1:,}"
+            else:
+                v1_str = str(v1)
+            
+            if isinstance(v2, (int, float)) and not isinstance(v2, bool):
+                if isinstance(v2, float):
+                    v2_str = f"{v2:,.2f}" if v2 >= 100 else f"{v2:.4f}"
+                else:
+                    v2_str = f"{v2:,}"
+            else:
+                v2_str = str(v2)
+            
+            table.add_row(m1, v1_str, m2, v2_str)
+        
+        self.console.print(table)
+    
+    def _on_step(self) -> bool:
+        return True
+
+
+def configure_rich_logger(model, suppress_categories: Optional[List[str]] = None):
+    """
+    Configure a SB3 model to use Rich output format.
+    
+    NOTE: For best results, set verbose=0 on your model and add RichTrainingCallback
+    to your callbacks list instead.
+    
+    Usage:
+        model = PPO(..., verbose=0)
+        callbacks.append(RichTrainingCallback())
+    
+    Args:
+        model: SB3 model (PPO, A2C, etc.)
+        suppress_categories: Categories to hide from console output
+    """
+    from stable_baselines3.common.logger import Logger, KVWriter
+    
+    class RichKVWriter(KVWriter):
+        """Adapter for Rich output to SB3's KVWriter interface."""
+        
+        def __init__(self, suppress_categories: Optional[List[str]] = None):
+            self.rich_output = RichOutputFormat(suppress_categories=suppress_categories)
+        
+        def write(self, key_values: Dict[str, Any], key_excluded: Dict[str, bool], step: int) -> None:
+            self.rich_output.write(key_values, key_excluded, step)
+        
+        def close(self) -> None:
+            self.rich_output.close()
+    
+    # Get existing logger and add Rich output
+    if hasattr(model, "logger") and model.logger is not None:
+        # Replace stdout writer with Rich writer
+        new_output_formats = []
+        for writer in model.logger.output_formats:
+            # Keep TensorBoard and other file writers, replace human output
+            writer_type = type(writer).__name__
+            if writer_type == "HumanOutputFormat":
+                # Replace with Rich
+                new_output_formats.append(RichKVWriter(suppress_categories))
+            else:
+                new_output_formats.append(writer)
+        
+        model.logger.output_formats = new_output_formats

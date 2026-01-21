@@ -54,10 +54,16 @@ class RewardFunction:
     
     def _apply_config_weights(self):
         """Apply weights from RewardConfig to components."""
+        # All weights are already applied in the config values
+        # Components multiply by config.* directly
         weight_map = {
             "capture_progress": self.config.capture_progress,
             "win_bonus": self.config.win_bonus,
-            "time_penalty": 1.0,  # Already scaled in config
+            "zone_entry": 1.0,  # Uses config.zone_entry_bonus
+            "zone_time": 1.0,   # Uses config.zone_time
+            "min_dist_potential": 1.0,  # Uses config.min_dist_potential
+            "ring_bonus": 1.0,  # Uses config.ring_bonus
+            "time_penalty": 1.0,
             "collision_penalty": 1.0,
             "integrity_loss": 1.0,
             "unit_disabled": 1.0,
@@ -72,6 +78,10 @@ class RewardFunction:
         # Handle detected penalty toggle
         if not self.config.enable_detected_penalty:
             self.registry.enable("detected_penalty", False)
+        
+        # Disable approach_objective if weight is 0 (using min_dist instead)
+        if self.config.approach_objective == 0:
+            self.registry.enable("approach_objective", False)
     
     def calculate(
         self,

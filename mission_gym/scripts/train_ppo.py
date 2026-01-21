@@ -1,6 +1,14 @@
 #!/usr/bin/env python3
 """PPO training script for Mission Gym using Stable-Baselines3."""
 
+# Suppress TensorFlow/TensorBoard noise (must be before any TF imports)
+import os
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'  # Suppress TF logging
+os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'  # Disable oneDNN warnings
+import warnings
+warnings.filterwarnings('ignore', category=UserWarning, module='tensorboard')
+warnings.filterwarnings('ignore', category=DeprecationWarning)
+
 import argparse
 import sys
 from pathlib import Path
@@ -30,6 +38,11 @@ def main():
         help="Number of parallel environments (default: 4)",
     )
     parser.add_argument(
+        "--subproc",
+        action="store_true",
+        help="Use SubprocVecEnv for true parallelism (recommended for n-envs > 4)",
+    )
+    parser.add_argument(
         "--seed",
         type=int,
         default=42,
@@ -53,6 +66,7 @@ def main():
         create_run_dir, save_run_configs, save_run_metadata, save_rewards_history,
         print_banner, print_gpu_status, print_step, print_info, print_warning,
         print_error, print_success, print_divider, Colors, get_nvidia_smi_info,
+        update_unified_dashboard, get_runs_dir,
     )
     
     c = Colors
@@ -94,7 +108,7 @@ def main():
     try:
         from stable_baselines3 import PPO
         from stable_baselines3.common.callbacks import CheckpointCallback, CallbackList
-        from stable_baselines3.common.vec_env import DummyVecEnv
+        from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv
         print_info("Stable-Baselines3 imported")
     except ImportError as e:
         print_error(f"Import failed: {e}")
@@ -103,7 +117,10 @@ def main():
     
     try:
         from mission_gym.env import MissionGymEnv
-        from mission_gym.scripts.monitoring import HTMLMonitorCallback, EvalWithMonitorCallback, MetricsCallback
+        from mission_gym.scripts.monitoring import (
+            HTMLMonitorCallback, EvalWithMonitorCallback, MetricsCallback,
+            RichTrainingCallback,
+        )
         print_info("MissionGymEnv and monitoring imported")
     except ImportError as e:
         print_error(f"Import failed: {e}")
@@ -121,8 +138,12 @@ def main():
         return _init
     
     try:
-        envs = DummyVecEnv([make_env(args.seed + i) for i in range(args.n_envs)])
-        print_info(f"Created {args.n_envs} environments")
+        if args.subproc:
+            envs = SubprocVecEnv([make_env(args.seed + i) for i in range(args.n_envs)])
+            print_info(f"Created {args.n_envs} environments (SubprocVecEnv - true parallelism)")
+        else:
+            envs = DummyVecEnv([make_env(args.seed + i) for i in range(args.n_envs)])
+            print_info(f"Created {args.n_envs} environments (DummyVecEnv)")
     except Exception as e:
         print_error(f"Environment creation failed: {e}")
         import traceback
@@ -177,14 +198,18 @@ def main():
         name_prefix="ppo_mission",
     )
     
-    # Metrics callback for TensorBoard KPIs
+    # Metrics callback for TensorBoard KPIs and episode summaries
     metrics_callback = MetricsCallback(verbose=0)
     
-    callbacks = CallbackList([html_monitor, eval_callback, checkpoint_callback, metrics_callback])
+    # Rich training callback for beautiful console output
+    rich_training = RichTrainingCallback(print_freq=1)
+    
+    callbacks = CallbackList([html_monitor, eval_callback, checkpoint_callback, metrics_callback, rich_training])
     print_info("HTML dashboard callback configured")
     print_info("Evaluation callback configured")
     print_info("Checkpoint callback configured")
     print_info("Metrics callback configured (TensorBoard KPIs)")
+    print_info("Rich training logger configured")
     
     # Create PPO model with MultiInputPolicy (CNN on BEV + MLP on vec)
     print()
@@ -195,7 +220,7 @@ def main():
         model = PPO(
             "MultiInputPolicy",
             envs,
-            verbose=1,
+            verbose=0,  # Disabled - using RichTrainingCallback instead
             seed=args.seed,
             tensorboard_log=tb_log,
             learning_rate=3e-4,
@@ -215,7 +240,7 @@ def main():
                 },
             },
         )
-        print_info("PPO model created")
+        print_info("PPO model created (verbose=0, Rich output enabled)")
     except Exception as e:
         print_error(f"Model creation failed: {e}")
         import traceback
@@ -225,11 +250,17 @@ def main():
     # Training info
     print()
     print_divider()
+    # Update unified dashboard to include this run
+    update_unified_dashboard()
+    unified_dashboard = get_runs_dir() / "dashboard.html"
+    
     print()
     print(f"  {c.colorize('📊 Monitoring:', c.BOLD, c.BRIGHT_CYAN)}")
     print()
-    print(f"     {c.colorize('Dashboard:', c.BRIGHT_BLUE)} {dashboard_path}")
-    print(f"     {c.colorize('           ', c.DIM)} Open in browser - auto-refreshes every 5s")
+    print(f"     {c.colorize('All Runs:', c.BRIGHT_CYAN)} {unified_dashboard}")
+    print(f"     {c.colorize('           ', c.DIM)} Master dashboard with run selector")
+    print(f"     {c.colorize('This Run:', c.BRIGHT_BLUE)} {dashboard_path}")
+    print(f"     {c.colorize('           ', c.DIM)} Auto-refreshes every 5s")
     if not args.no_tensorboard:
         print(f"     {c.colorize('TensorBoard:', c.BRIGHT_BLUE)} tensorboard --logdir {log_path}")
         print(f"     {c.colorize('            ', c.DIM)} Then open http://localhost:6006")
@@ -281,6 +312,9 @@ def main():
     envs.close()
     eval_env.close()
     
+    # Update unified dashboard after training
+    update_unified_dashboard()
+    
     # Final summary
     print()
     print_divider()
@@ -288,7 +322,8 @@ def main():
     print(f"  {c.colorize('✅ Training Complete!', c.BOLD, c.BRIGHT_GREEN)}")
     print()
     print(f"  {c.colorize('📁 Run Directory:', c.BRIGHT_BLUE)} {run_dir}")
-    print(f"  {c.colorize('📊 Dashboard:', c.BRIGHT_BLUE)} {dashboard_path}")
+    print(f"  {c.colorize('📊 All Runs:', c.BRIGHT_CYAN)} {unified_dashboard}")
+    print(f"  {c.colorize('📊 This Run:', c.BRIGHT_BLUE)} {dashboard_path}")
     print(f"  {c.colorize('🎮 To evaluate:', c.BRIGHT_BLUE)} python -m mission_gym.scripts.evaluate --model {model_path}")
     print()
     print_divider()

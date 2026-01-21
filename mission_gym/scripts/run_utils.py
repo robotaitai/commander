@@ -394,3 +394,251 @@ def print_divider() -> None:
     """Print a divider line."""
     c = Colors
     print(c.colorize("  " + "─" * 66, c.DIM))
+
+
+def generate_unified_dashboard() -> Path:
+    """
+    Generate a unified dashboard HTML that allows selecting between all runs.
+    
+    Returns the path to the generated dashboard.
+    """
+    runs_dir = get_runs_dir()
+    dashboard_path = runs_dir / "dashboard.html"
+    
+    # Collect all runs with their metadata
+    runs_data = []
+    for run_dir in sorted(runs_dir.iterdir(), reverse=True):  # Newest first
+        if not run_dir.is_dir():
+            continue
+        
+        dashboard_file = run_dir / "dashboard.html"
+        metadata_file = run_dir / "run_metadata.json"
+        
+        if not dashboard_file.exists():
+            continue  # Skip runs without dashboards
+        
+        # Load metadata if available
+        metadata = {}
+        if metadata_file.exists():
+            try:
+                with open(metadata_file) as f:
+                    metadata = json.load(f)
+            except Exception:
+                pass
+        
+        runs_data.append({
+            "name": run_dir.name,
+            "path": str(dashboard_file.relative_to(runs_dir)),
+            "created": metadata.get("created_at", ""),
+            "timesteps": metadata.get("args", {}).get("timesteps", 0),
+        })
+    
+    # Build run options HTML
+    options_html = ""
+    for i, run in enumerate(runs_data):
+        selected = "selected" if i == 0 else ""
+        created = run["created"][:19].replace("T", " ") if run["created"] else ""
+        steps = f"{run['timesteps']:,}" if run["timesteps"] else "?"
+        options_html += f'<option value="{run["path"]}" {selected}>{run["name"]} ({created}, {steps} steps)</option>\n'
+    
+    # Default to first run or empty
+    default_src = runs_data[0]["path"] if runs_data else ""
+    
+    html = f'''<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <!-- No meta refresh - using JS to refresh iframe without scroll jump -->
+    <title>Mission Gym - All Runs Dashboard</title>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Space+Grotesk:wght@400;500;700&display=swap" rel="stylesheet">
+    <style>
+        :root {{
+            --bg-dark: #0a0e14;
+            --bg-panel: #111820;
+            --bg-card: #171f2a;
+            --border: #2a3544;
+            --accent-teal: #00d4aa;
+            --accent-cyan: #00bfff;
+            --text-primary: #e6edf3;
+            --text-secondary: #7d8590;
+            --glow-teal: rgba(0, 212, 170, 0.3);
+        }}
+        
+        * {{ margin: 0; padding: 0; box-sizing: border-box; }}
+        
+        body {{
+            font-family: 'Space Grotesk', system-ui, sans-serif;
+            background: var(--bg-dark);
+            color: var(--text-primary);
+            min-height: 100vh;
+        }}
+        
+        .header {{
+            background: var(--bg-panel);
+            border-bottom: 1px solid var(--border);
+            padding: 1rem 2rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            z-index: 100;
+        }}
+        
+        .logo {{
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: var(--accent-teal);
+            text-shadow: 0 0 20px var(--glow-teal);
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }}
+        
+        .run-selector {{
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }}
+        
+        .run-selector label {{
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+        }}
+        
+        .run-selector select {{
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 0.5rem 1rem;
+            color: var(--text-primary);
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.85rem;
+            min-width: 400px;
+            cursor: pointer;
+        }}
+        
+        .run-selector select:hover {{
+            border-color: var(--accent-teal);
+        }}
+        
+        .run-selector select:focus {{
+            outline: none;
+            border-color: var(--accent-teal);
+            box-shadow: 0 0 0 2px var(--glow-teal);
+        }}
+        
+        .run-count {{
+            background: var(--bg-card);
+            border: 1px solid var(--accent-teal);
+            border-radius: 20px;
+            padding: 0.25rem 0.75rem;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.8rem;
+            color: var(--accent-teal);
+        }}
+        
+        .dashboard-frame {{
+            border: none;
+            width: 100%;
+            height: calc(100vh - 60px);
+            margin-top: 60px;
+        }}
+        
+        .no-runs {{
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: calc(100vh - 60px);
+            margin-top: 60px;
+            color: var(--text-secondary);
+        }}
+        
+        .no-runs-icon {{
+            font-size: 4rem;
+            margin-bottom: 1rem;
+        }}
+        
+        .no-runs-text {{
+            font-size: 1.2rem;
+        }}
+        
+        .no-runs-hint {{
+            font-size: 0.9rem;
+            margin-top: 0.5rem;
+            color: var(--text-secondary);
+            opacity: 0.7;
+        }}
+    </style>
+</head>
+<body>
+    <header class="header">
+        <div class="logo">
+            <span>🎮</span>
+            <span>MISSION GYM</span>
+        </div>
+        <div class="run-selector">
+            <label for="run-select">Select Run:</label>
+            <select id="run-select" onchange="loadRun(this.value)">
+                {options_html}
+            </select>
+            <span class="run-count">{len(runs_data)} runs</span>
+        </div>
+    </header>
+    
+    {f"<iframe class='dashboard-frame' id='dashboard-frame' src='{default_src}'></iframe>" if runs_data else """
+    <div class="no-runs">
+        <div class="no-runs-icon">&#128640;</div>
+        <div class="no-runs-text">No training runs found</div>
+        <div class="no-runs-hint">Start a training run with: python -m mission_gym.scripts.train_ppo</div>
+    </div>
+    """}
+    
+    <script>
+        function loadRun(path) {{
+            const frame = document.getElementById('dashboard-frame');
+            if (frame) {{
+                frame.src = path;
+            }}
+        }}
+        
+        // NO auto-refresh of parent page!
+        // Each run's dashboard inside the iframe has its own refresh.
+        // This prevents scroll jumping and double-refreshes.
+        
+        // Store the currently selected run in localStorage
+        const select = document.getElementById('run-select');
+        if (select) {{
+            const saved = localStorage.getItem('selectedRun');
+            if (saved) {{
+                for (let option of select.options) {{
+                    if (option.value === saved) {{
+                        select.value = saved;
+                        loadRun(saved);
+                        break;
+                    }}
+                }}
+            }}
+            select.addEventListener('change', function() {{
+                localStorage.setItem('selectedRun', this.value);
+            }});
+        }}
+    </script>
+</body>
+</html>'''
+    
+    with open(dashboard_path, "w") as f:
+        f.write(html)
+    
+    return dashboard_path
+
+
+def update_unified_dashboard() -> None:
+    """Update the unified dashboard (call this after creating a new run)."""
+    try:
+        generate_unified_dashboard()
+    except Exception:
+        pass  # Non-critical, don't fail training
