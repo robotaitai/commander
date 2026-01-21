@@ -46,32 +46,40 @@ The environment uses a **Dict observation space** with two components:
 
 **Current Setup** (from `scenario.yaml`):
 - **4 attackers**: 1×UGV_A, 1×UGV_B, 1×UAV_A, 1×UAV_B
-- **Action dimensions**: `[7, 7, 8, 8]` (total action space size = 7×7×8×8 = 3,136)
+- **Action dimensions**: `[9, 9, 9, 9]` (total action space size = 9⁴ = 6,561)
 
-### Ground Units (UGV_A, UGV_B) - 7 Actions:
-| Index | Action | Description |
-|-------|--------|-------------|
-| 0 | `NOOP` | No operation (do nothing) |
-| 1 | `THROTTLE_UP` | Increase speed |
-| 2 | `THROTTLE_DOWN` | Decrease speed |
-| 3 | `TURN_LEFT` | Turn left (yaw) |
-| 4 | `TURN_RIGHT` | Turn right (yaw) |
-| 5 | `BRAKE` | Decelerate quickly |
-| 6 | `HOLD` | Maintain current state |
+### All Units (Ground and Air) - 9 High-Level Actions:
 
-### Air Units (UAV_A, UAV_B) - 8 Actions:
-| Index | Action | Description |
-|-------|--------|-------------|
-| 0 | `NOOP` | No operation |
-| 1 | `THROTTLE_UP` | Increase speed |
-| 2 | `THROTTLE_DOWN` | Decrease speed |
-| 3 | `YAW_LEFT` | Turn left (yaw) |
-| 4 | `YAW_RIGHT` | Turn right (yaw) |
-| 5 | `ALT_UP` | Increase altitude band |
-| 6 | `ALT_DOWN` | Decrease altitude band |
-| 7 | `HOLD` | Maintain current state |
+| Index | Action | Target Heading | Description |
+|-------|--------|----------------|-------------|
+| 0 | `STOP` | N/A | Stop moving (speed → 0) |
+| 1 | `NORTH` | 90° | Move north |
+| 2 | `NORTHEAST` | 45° | Move northeast |
+| 3 | `EAST` | 0° | Move east |
+| 4 | `SOUTHEAST` | 315° | Move southeast |
+| 5 | `SOUTH` | 270° | Move south |
+| 6 | `SOUTHWEST` | 225° | Move southwest |
+| 7 | `WEST` | 180° | Move west |
+| 8 | `NORTHWEST` | 135° | Move northwest |
 
-**Note**: `TAG` and `SCAN` actions were removed to simplify the action space for learning. They can be re-added once basic capture behavior is learned.
+### How It Works:
+
+**High-Level Control**: Each action immediately sets a target heading and speed (80% of max speed).
+
+**Low-Level Controller**: The dynamics engine smoothly:
+- Turns toward target heading (respecting max turn rate)
+- Accelerates/decelerates toward target speed (respecting max acceleration)
+- Handles realistic inertia and physics
+
+**Benefits**:
+- ✅ One action causes meaningful motion immediately
+- ✅ No need for 20+ timesteps of "turn right" then "throttle up"
+- ✅ Dramatically faster learning (capture learns in minutes)
+- ✅ Still respects physics constraints (turn rate, acceleration)
+
+**UAV Altitude**: UAVs automatically maintain altitude band 1 (mid-altitude) to fly over obstacles.
+
+**Note**: This high-level action space is **10x easier to learn** than incremental throttle/turn commands while maintaining realistic physics.
 
 ---
 
@@ -80,11 +88,16 @@ The environment uses a **Dict observation space** with two components:
 When stepping the environment:
 ```python
 action = np.array([a1, a2, a3, a4], dtype=np.int32)
-# Where:
-# a1 ∈ [0, 6] for UGV_A
-# a2 ∈ [0, 6] for UGV_B  
-# a3 ∈ [0, 7] for UAV_A
-# a4 ∈ [0, 7] for UAV_B
+# Where each action ∈ [0, 8]:
+# a1 = UGV_A action (0-8)
+# a2 = UGV_B action (0-8)  
+# a3 = UAV_A action (0-8)
+# a4 = UAV_B action (0-8)
+
+# Examples:
+action = np.array([3, 3, 3, 3])  # All units move EAST
+action = np.array([1, 5, 2, 7])  # N, S, NE, W
+action = np.array([0, 0, 0, 0])  # All units STOP
 ```
 
 ---

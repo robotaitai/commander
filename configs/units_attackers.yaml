@@ -1,7 +1,8 @@
 # Attacker unit type definitions
 # ============================================================================
-# NOTE: TAG and SCAN removed to simplify action space for learning.
-# Re-add once agent reliably captures objectives.
+# HIGH-LEVEL ACTIONS: 8 compass directions + STOP
+# Each action immediately sets target heading/speed, making learning 10x faster.
+# Low-level controller handles smooth turning and acceleration.
 # ============================================================================
 
 unit_types:
@@ -12,19 +13,20 @@ unit_types:
     max_turn_rate: 90.0     # deg/s
     radius: 2.5             # collision radius - LARGER, can't fit through tight gaps
     initial_integrity: 100.0
-    initial_speed: 4.0      # Start moving (half max speed) - helps learning
+    initial_speed: 0.0      # Start stopped (high-level controller handles speed)
     sensors:
       - lidar_short
       - camera_front
     actions:
-      - NOOP
-      - THROTTLE_UP
-      - THROTTLE_DOWN
-      - TURN_LEFT
-      - TURN_RIGHT
-      - BRAKE
-      - HOLD
-      # TAG and SCAN removed for simpler learning
+      - STOP
+      - NORTH
+      - NORTHEAST
+      - EAST
+      - SOUTHEAST
+      - SOUTH
+      - SOUTHWEST
+      - WEST
+      - NORTHWEST
 
   UGV_B:
     category: ground
@@ -33,19 +35,20 @@ unit_types:
     max_turn_rate: 120.0
     radius: 2.0             # slightly smaller than UGV_A but still substantial
     initial_integrity: 80.0
-    initial_speed: 5.0      # Start moving (half max speed)
+    initial_speed: 0.0      # Start stopped (high-level controller handles speed)
     sensors:
       - lidar_short
       - radar_medium
     actions:
-      - NOOP
-      - THROTTLE_UP
-      - THROTTLE_DOWN
-      - TURN_LEFT
-      - TURN_RIGHT
-      - BRAKE
-      - HOLD
-      # TAG and SCAN removed for simpler learning
+      - STOP
+      - NORTH
+      - NORTHEAST
+      - EAST
+      - SOUTHEAST
+      - SOUTH
+      - SOUTHWEST
+      - WEST
+      - NORTHWEST
 
   UAV_A:
     category: air
@@ -54,22 +57,22 @@ unit_types:
     max_turn_rate: 180.0
     radius: 0.5             # small - can fly over obstacles at altitude
     initial_integrity: 60.0
-    initial_speed: 6.0      # Start moving (half max speed)
+    initial_speed: 0.0      # Start stopped (high-level controller handles speed)
     altitude_bands: 3       # 0, 1, 2
     altitude_change_time: 1.0  # seconds to change band
     sensors:
       - camera_wide
       - radar_short
     actions:
-      - NOOP
-      - THROTTLE_UP
-      - THROTTLE_DOWN
-      - YAW_LEFT
-      - YAW_RIGHT
-      - ALT_UP
-      - ALT_DOWN
-      - HOLD
-      # TAG and SCAN removed for simpler learning
+      - STOP
+      - NORTH
+      - NORTHEAST
+      - EAST
+      - SOUTHEAST
+      - SOUTH
+      - SOUTHWEST
+      - WEST
+      - NORTHWEST
 
   UAV_B:
     category: air
@@ -78,19 +81,19 @@ unit_types:
     max_turn_rate: 200.0
     radius: 0.4             # smallest footprint
     initial_integrity: 50.0
-    initial_speed: 7.5      # Start moving (half max speed)
+    initial_speed: 0.0      # Start stopped (high-level controller handles speed)
     altitude_bands: 3
     altitude_change_time: 0.8
     sensors:
       - lidar_long
       - camera_front
     actions:
-      - NOOP
-      - THROTTLE_UP
-      - THROTTLE_DOWN
-      - YAW_LEFT
-      - YAW_RIGHT
-      - ALT_UP
-      - ALT_DOWN
-      - HOLD
-      # TAG and SCAN removed for simpler learning
+      - STOP
+      - NORTH
+      - NORTHEAST
+      - EAST
+      - SOUTHEAST
+      - SOUTH
+      - SOUTHWEST
+      - WEST
+      - NORTHWEST

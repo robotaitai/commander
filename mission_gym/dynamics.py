@@ -8,30 +8,42 @@ import numpy as np
 from mission_gym.config import UnitTypeConfig, Obstacle
 
 
-# Action constants for ground units (UGV)
-UGV_ACTIONS = [
-    "NOOP", "THROTTLE_UP", "THROTTLE_DOWN", "TURN_LEFT", "TURN_RIGHT",
-    "BRAKE", "HOLD", "TAG", "SCAN"
+# High-level action constants (all unit types)
+# 8 compass directions + STOP
+HIGH_LEVEL_ACTIONS = [
+    "STOP",      # 0 - Hold position (speed = 0)
+    "NORTH",     # 1 - Move north (heading = 90°)
+    "NORTHEAST", # 2 - Move northeast (heading = 45°)
+    "EAST",      # 3 - Move east (heading = 0°)
+    "SOUTHEAST", # 4 - Move southeast (heading = 315°)
+    "SOUTH",     # 5 - Move south (heading = 270°)
+    "SOUTHWEST", # 6 - Move southwest (heading = 225°)
+    "WEST",      # 7 - Move west (heading = 180°)
+    "NORTHWEST", # 8 - Move northwest (heading = 135°)
 ]
 
-# Action constants for air units (UAV)
-UAV_ACTIONS = [
-    "NOOP", "THROTTLE_UP", "THROTTLE_DOWN", "YAW_LEFT", "YAW_RIGHT",
-    "ALT_UP", "ALT_DOWN", "HOLD", "TAG", "SCAN"
-]
+# Map action index to target heading (degrees, 0 = east, CCW positive)
+ACTION_TO_HEADING = {
+    0: None,   # STOP - no target heading
+    1: 90.0,   # NORTH
+    2: 45.0,   # NORTHEAST
+    3: 0.0,    # EAST
+    4: 315.0,  # SOUTHEAST
+    5: 270.0,  # SOUTH
+    6: 225.0,  # SOUTHWEST
+    7: 180.0,  # WEST
+    8: 135.0,  # NORTHWEST
+}
 
 
 def get_action_list(category: str) -> list[str]:
     """Get the action list for a unit category."""
-    if category == "ground":
-        return UGV_ACTIONS
-    else:
-        return UAV_ACTIONS
+    return HIGH_LEVEL_ACTIONS
 
 
 def get_num_actions(category: str) -> int:
     """Get the number of actions for a unit category."""
-    return len(get_action_list(category))
+    return len(HIGH_LEVEL_ACTIONS)
 
 
 @dataclass
@@ -44,6 +56,10 @@ class UnitState:
     
     # Velocity
     speed: float = 0.0
+    
+    # High-level controller targets
+    target_heading: Optional[float] = None  # degrees, None = no target
+    target_speed: float = 0.0  # desired speed
     
     # For UAV: altitude band (0, 1, 2)
     altitude: int = 0
@@ -141,7 +157,10 @@ class DynamicsEngine:
     
     def step_unit(self, state: UnitState, action: str) -> tuple[UnitState, bool]:
         """
-        Step a single unit forward by one tick.
+        Step a single unit forward by one tick using high-level action.
+        
+        High-level action is converted to target heading/speed, then a low-level
+        controller smoothly turns and accelerates toward targets.
         
         Returns:
             Updated state and collision flag.
@@ -168,52 +187,52 @@ class DynamicsEngine:
         max_accel = config.max_accel * mobility_mult
         max_turn = config.max_turn_rate * mobility_mult
         
-        # Process action
-        target_speed = state.speed
-        turn_rate = 0.0
-        altitude_change = 0
+        # Parse high-level action
+        action_idx = HIGH_LEVEL_ACTIONS.index(action) if action in HIGH_LEVEL_ACTIONS else 0
+        target_heading = ACTION_TO_HEADING.get(action_idx)
         
-        if action == "NOOP":
-            pass
-        elif action == "THROTTLE_UP":
-            target_speed = min(state.speed + max_accel * self.dt, max_speed)
-        elif action == "THROTTLE_DOWN":
-            target_speed = max(state.speed - max_accel * self.dt, 0.0)
-        elif action in ("TURN_LEFT", "YAW_LEFT"):
-            turn_rate = max_turn
-        elif action in ("TURN_RIGHT", "YAW_RIGHT"):
-            turn_rate = -max_turn
-        elif action == "BRAKE":
-            target_speed = max(state.speed - max_accel * 2 * self.dt, 0.0)
-        elif action == "HOLD":
-            target_speed = 0.0
-        elif action == "ALT_UP":
-            if state.category == "air" and state.altitude < config.altitude_bands - 1:
-                altitude_change = 1
-        elif action == "ALT_DOWN":
-            if state.category == "air" and state.altitude > 0:
-                altitude_change = -1
-        # TAG and SCAN are handled by engagement system
+        if action == "STOP":
+            state.target_heading = None
+            state.target_speed = 0.0
+        else:
+            # Set target heading and speed
+            state.target_heading = target_heading
+            state.target_speed = max_speed * 0.8  # 80% of max speed for smooth control
         
-        # Update speed
-        state.speed = target_speed
+        # Low-level controller: turn toward target heading
+        if state.target_heading is not None:
+            # Calculate heading error
+            heading_error = state.target_heading - state.heading
+            # Normalize to [-180, 180]
+            while heading_error > 180:
+                heading_error -= 360
+            while heading_error < -180:
+                heading_error += 360
+            
+            # Apply turn rate (proportional controller with rate limit)
+            turn_amount = max(-max_turn * self.dt, min(max_turn * self.dt, heading_error))
+            state.heading += turn_amount
         
-        # Update heading
-        state.heading += turn_rate * self.dt
         # Normalize heading to [0, 360)
         state.heading = state.heading % 360
         
-        # Update altitude for UAV
-        if state.category == "air" and altitude_change != 0:
-            state.target_altitude = state.altitude + altitude_change
-            state.target_altitude = max(0, min(state.target_altitude, config.altitude_bands - 1))
+        # Low-level controller: accelerate toward target speed
+        speed_error = state.target_speed - state.speed
+        if abs(speed_error) < 0.1:
+            state.speed = state.target_speed
+        else:
+            accel_amount = max(-max_accel * self.dt, min(max_accel * self.dt, speed_error))
+            state.speed = max(0.0, min(max_speed, state.speed + accel_amount))
         
-        # Process altitude transition
-        if state.category == "air" and state.altitude != state.target_altitude:
-            state.altitude_transition += self.dt / config.altitude_change_time
-            if state.altitude_transition >= 1.0:
-                state.altitude = state.target_altitude
-                state.altitude_transition = 0.0
+        # UAV altitude: gradually move to preferred altitude (altitude band 1 for UAVs)
+        if state.category == "air":
+            preferred_altitude = 1  # Mid altitude
+            if state.altitude != preferred_altitude:
+                state.target_altitude = preferred_altitude
+                state.altitude_transition += self.dt / config.altitude_change_time
+                if state.altitude_transition >= 1.0:
+                    state.altitude = state.target_altitude
+                    state.altitude_transition = 0.0
         
         # Calculate new position
         dx, dy = state.get_forward_vector()
