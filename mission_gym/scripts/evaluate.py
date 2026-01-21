@@ -174,6 +174,8 @@ def main():
     print_divider()
     print()
     print(f"  {c.colorize(f'🚀 Running {args.episodes} evaluation episodes...', c.BOLD, c.BRIGHT_GREEN)}")
+    if not args.no_render:
+        print(f"  {c.colorize('Controls:', c.BRIGHT_BLUE)} Press 'R' to restart current episode, 'ESC' to quit")
     print()
     
     episode_rewards = []
@@ -191,7 +193,8 @@ def main():
                 action_names.append(["NOOP"])
         return action_names
     
-    for ep in range(args.episodes):
+    ep = 0
+    while ep < args.episodes:
         obs, info = env.reset(seed=args.seed + ep)
         done = False
         total_reward = 0.0
@@ -219,7 +222,35 @@ def main():
             print(c.colorize(header, c.DIM))
             print(c.colorize("  " + "─" * (len(header) - 2), c.DIM))
         
+        restart_requested = False
         while not done:
+            # Check for keyboard events (restart, quit)
+            if not args.no_render:
+                try:
+                    import pygame
+                    for event in pygame.event.get():
+                        if event.type == pygame.QUIT:
+                            print()
+                            print_warning("Window closed by user")
+                            env.close()
+                            return 0
+                        elif event.type == pygame.KEYDOWN:
+                            if event.key == pygame.K_ESCAPE:
+                                print()
+                                print_warning("ESC pressed - exiting evaluation")
+                                env.close()
+                                return 0
+                            elif event.key == pygame.K_r:
+                                print()
+                                print_info("R pressed - restarting episode")
+                                restart_requested = True
+                                break
+                except:
+                    pass  # pygame not available or not initialized
+            
+            if restart_requested:
+                break
+            
             action, _ = model.predict(obs, deterministic=not args.stochastic)
             
             # Decode actions to names
@@ -254,6 +285,10 @@ def main():
                 env.render()
                 if args.slow:
                     time.sleep(0.05)
+        
+        # If restart was requested, don't count this episode
+        if restart_requested:
+            continue  # Redo this episode (don't increment ep)
         
         episode_rewards.append(total_reward)
         episode_lengths.append(step_count)
@@ -315,6 +350,9 @@ def main():
             "defenders_alive": defenders_alive,
             "action_counts": action_counts,
         })
+        
+        # Increment episode counter (only after successful completion)
+        ep += 1
     
     env.close()
     
