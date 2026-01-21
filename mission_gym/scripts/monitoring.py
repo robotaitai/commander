@@ -396,7 +396,7 @@ class HTMLMonitorCallback(BaseCallback):
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta http-equiv="refresh" content="30">
+    <meta http-equiv="refresh" content="5">
     <title>{run_name} // Mission Gym</title>
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Space+Grotesk:wght@400;500;700&display=swap" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -1002,7 +1002,7 @@ class HTMLMonitorCallback(BaseCallback):
     </div>
     
     <footer class="footer">
-        <p>Mission Gym Training Dashboard • Auto-refreshes every 30s</p>
+        <p>Mission Gym Training Dashboard • Auto-refreshes every 5s</p>
     </footer>
     
     <script>

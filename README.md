@@ -108,7 +108,8 @@ runs/swift-falcon-20260121-143052/
 ├── configs/           # Copy of YAML configs used
 ├── checkpoints/       # Model checkpoints
 ├── logs/              # TensorBoard logs
-├── dashboard.html     # Live HTML dashboard
+├── dashboard.html     # Live HTML dashboardpython -m mission_gym.scripts.live_training --timesteps 100000 --render-freq 50
+
 ├── final_model.zip    # Trained model
 ├── rewards_history.json
 └── run_metadata.json

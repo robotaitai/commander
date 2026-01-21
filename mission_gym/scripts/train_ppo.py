@@ -225,7 +225,7 @@ def main():
     print(f"  {c.colorize('📊 Monitoring:', c.BOLD, c.BRIGHT_CYAN)}")
     print()
     print(f"     {c.colorize('Dashboard:', c.BRIGHT_BLUE)} {dashboard_path}")
-    print(f"     {c.colorize('           ', c.DIM)} Open in browser - auto-refreshes every 30s")
+    print(f"     {c.colorize('           ', c.DIM)} Open in browser - auto-refreshes every 5s")
     if not args.no_tensorboard:
         print(f"     {c.colorize('TensorBoard:', c.BRIGHT_BLUE)} tensorboard --logdir {log_path}")
         print(f"     {c.colorize('            ', c.DIM)} Then open http://localhost:6006")
