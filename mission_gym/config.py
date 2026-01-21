@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 import yaml
 import math
 
@@ -353,6 +353,24 @@ class RewardConfig:
 
 
 @dataclass
+class TerminationConfig:
+    """Early termination configuration."""
+    stagnation_seconds: float
+    min_dist_epsilon: float
+    early_success_capture_progress: Optional[float]
+    
+    @classmethod
+    def from_yaml(cls) -> "TerminationConfig":
+        data = load_yaml("world.yaml")
+        term = data.get("termination", {})
+        return cls(
+            stagnation_seconds=term.get("stagnation_seconds", 30.0),
+            min_dist_epsilon=term.get("min_dist_epsilon", 1.0),
+            early_success_capture_progress=term.get("early_success_capture_progress"),
+        )
+
+
+@dataclass
 class FullConfig:
     """Complete configuration for the environment."""
     world: WorldConfig
@@ -362,6 +380,7 @@ class FullConfig:
     sensors: dict[str, SensorConfig]
     engagement: EngagementConfig
     reward: RewardConfig
+    termination: TerminationConfig
     
     @classmethod
     def load(cls) -> "FullConfig":
@@ -373,4 +392,5 @@ class FullConfig:
             sensors=load_sensors(),
             engagement=EngagementConfig.from_yaml(),
             reward=RewardConfig.from_yaml(),
+            termination=TerminationConfig.from_yaml(),
         )

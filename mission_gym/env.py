@@ -96,6 +96,11 @@ class MissionGymEnv(gym.Env):
         # Metrics tracker (initialized properly in reset after we know num_attackers)
         self.metrics: Optional[MetricsTracker] = None
         
+        # Early termination tracking
+        self._best_min_dist: Optional[float] = None
+        self._last_progress_time: float = 0.0
+        self._prev_capture_progress: float = 0.0
+        
         # Rendering
         self.render_mode = render_mode
         self.renderer: Optional[Renderer] = None
@@ -153,6 +158,14 @@ class MissionGymEnv(gym.Env):
         # Reset scenario
         self.attackers, self.defenders, self.objective = self.scenario.reset()
         
+        # Reset early termination tracking
+        self._best_min_dist = min(
+            np.hypot(a.x - self.objective.x, a.y - self.objective.y)
+            for a in self.attackers if not a.is_disabled
+        ) if self.attackers else float('inf')
+        self._last_progress_time = 0.0
+        self._prev_capture_progress = 0.0
+
         # Reset backend
         self.backend.reset(self.attackers, self.defenders)
         
@@ -180,6 +193,8 @@ class MissionGymEnv(gym.Env):
         
         # Reset engagement stats
         self.engagement.stats.reset()
+
+
         
         # Get initial observation
         obs = self._get_observation()
@@ -305,18 +320,62 @@ class MissionGymEnv(gym.Env):
         # Reset engagement stats for next step
         self.engagement.stats.reset()
         
-        # Check termination
-        terminated = self.objective.is_captured
+        # === Early Termination Logic ===
+        # Compute current min distance to objective
+        curr_min_dist = min(
+            np.hypot(a.x - self.objective.x, a.y - self.objective.y)
+            for a in self.attackers if not a.is_disabled
+        ) if any(not a.is_disabled for a in self.attackers) else float("inf")
         
-        # Check truncation (time limit or all attackers disabled)
+        # Check if agent made progress this step
+        made_progress = False
+        
+        # Progress signal 1: Capture progress increased
+        if total_capture_delta > 0:
+            made_progress = True
+        
+        # Progress signal 2: Distance improved by at least min_dist_epsilon
+        if curr_min_dist < (self._best_min_dist - self.config.termination.min_dist_epsilon):
+            made_progress = True
+            self._best_min_dist = curr_min_dist
+        
+        # Update last progress time
+        if made_progress:
+            self._last_progress_time = self.sim_time
+        
+        # Check for stagnation (no progress for too long)
+        time_since_progress = self.sim_time - self._last_progress_time
+        stalled = time_since_progress >= self.config.termination.stagnation_seconds
+        
+        # Check termination conditions
+        terminated = self.objective.is_captured
+        outcome = "captured" if terminated else None
+        
+        # Check for early success (optional)
+        if self.config.termination.early_success_capture_progress is not None:
+            if self.objective.capture_progress >= self.config.termination.early_success_capture_progress:
+                terminated = True
+                outcome = "early_success"
+        
+        # Check truncation (time limit, all disabled, or stalled)
         time_limit = self.sim_time >= self.config.world.max_duration
         all_disabled = all(a.is_disabled for a in self.attackers)
-        truncated = time_limit or all_disabled
+        truncated = time_limit or all_disabled or stalled
+        
+        # Set outcome for truncated episodes
+        if truncated and outcome is None:
+            if stalled:
+                outcome = "stalled"
+            elif all_disabled:
+                outcome = "all_disabled"
+            else:
+                outcome = "timeout"
         
         # Get observation and info
         obs = self._get_observation()
         info = self._get_info()
         info["reward_breakdown"] = reward_info
+        info["outcome"] = outcome
         
         # Pass through component breakdown for monitoring
         if "_component_breakdown" in reward_info:
@@ -324,15 +383,9 @@ class MissionGymEnv(gym.Env):
         
         # Finalize episode metrics if done
         if terminated or truncated:
-            if terminated:
-                reason = "captured"
-            elif all_disabled:
-                reason = "all_disabled"
-            else:
-                reason = "timeout"
             info["episode_metrics"] = self.metrics.finish(
-                win=terminated,
-                reason=reason,
+                win=terminated and outcome in ["captured", "early_success"],
+                reason=outcome,
                 attackers=self.attackers,
             )
         
