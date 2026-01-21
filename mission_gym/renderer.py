@@ -325,6 +325,9 @@ class Renderer:
         text_surface = self.font.render(progress_text, True, COLOR_TEXT)
         self.screen.blit(text_surface, (10, 35))
         
+        # Draw command panel (right side)
+        self._draw_command_panel(attackers)
+        
         # Selected unit info
         if 0 <= self.selected_unit < len(attackers):
             unit = attackers[self.selected_unit]
@@ -350,6 +353,112 @@ class Renderer:
         controls = "1-4: Select | WASD: Move | T: Tag | ESC: Quit"
         text_surface = self.small_font.render(controls, True, (150, 150, 150))
         self.screen.blit(text_surface, (self.window_size[0] - 320, 10))
+    
+    def _draw_command_panel(self, attackers: list[UnitState]) -> None:
+        """Draw command history panel on the right side."""
+        if not hasattr(self, 'command_history'):
+            self.command_history = [[] for _ in range(10)]  # Max 10 units
+            self.last_actions = ["---"] * 10
+        
+        panel_x = self.window_size[0] - 180
+        panel_y = 60
+        panel_width = 170
+        row_height = 50
+        
+        # Panel background
+        panel_height = len(attackers) * row_height + 30
+        pygame.draw.rect(
+            self.screen, (25, 25, 35),
+            (panel_x - 5, panel_y - 5, panel_width + 10, panel_height),
+            border_radius=8
+        )
+        pygame.draw.rect(
+            self.screen, (60, 60, 80),
+            (panel_x - 5, panel_y - 5, panel_width + 10, panel_height),
+            width=1, border_radius=8
+        )
+        
+        # Title
+        title = self.small_font.render("COMMANDS", True, (150, 200, 255))
+        self.screen.blit(title, (panel_x + 45, panel_y))
+        
+        # Action colors
+        action_colors = {
+            "NOOP": (100, 100, 100),
+            "THROTTLE_UP": (100, 255, 100),
+            "THROTTLE_DOWN": (255, 200, 100),
+            "TURN_LEFT": (100, 200, 255),
+            "TURN_RIGHT": (100, 200, 255),
+            "YAW_LEFT": (100, 200, 255),
+            "YAW_RIGHT": (100, 200, 255),
+            "BRAKE": (255, 150, 100),
+            "HOLD": (150, 150, 150),
+            "TAG": (255, 100, 100),
+            "SCAN": (200, 100, 255),
+            "ALT_UP": (150, 150, 255),
+            "ALT_DOWN": (150, 150, 255),
+        }
+        
+        # Action abbreviations
+        action_abbrev = {
+            "NOOP": "---",
+            "THROTTLE_UP": "THR+",
+            "THROTTLE_DOWN": "THR-",
+            "TURN_LEFT": "←TRN",
+            "TURN_RIGHT": "TRN→",
+            "YAW_LEFT": "←YAW",
+            "YAW_RIGHT": "YAW→",
+            "BRAKE": "BRK!",
+            "HOLD": "HOLD",
+            "ALT_UP": "ALT+",
+            "ALT_DOWN": "ALT-",
+            "TAG": "TAG!",
+            "SCAN": "SCAN",
+        }
+        
+        for i, attacker in enumerate(attackers):
+            y = panel_y + 25 + i * row_height
+            
+            # Unit label
+            is_selected = (i == self.selected_unit)
+            label_color = (255, 255, 100) if is_selected else (180, 180, 200)
+            unit_label = f"A{i}:{attacker.unit_type[:5]}"
+            label_surface = self.small_font.render(unit_label, True, label_color)
+            self.screen.blit(label_surface, (panel_x, y))
+            
+            # Current action
+            action = self.last_actions[i] if i < len(self.last_actions) else "---"
+            abbrev = action_abbrev.get(action, action[:4])
+            color = action_colors.get(action, (150, 150, 150))
+            
+            action_surface = self.font.render(abbrev, True, color)
+            self.screen.blit(action_surface, (panel_x + 5, y + 18))
+            
+            # History (last 3 commands as dots)
+            if i < len(self.command_history):
+                history = self.command_history[i][-3:]
+                for j, hist_action in enumerate(history):
+                    hist_color = action_colors.get(hist_action, (80, 80, 80))
+                    # Draw small colored square
+                    pygame.draw.rect(
+                        self.screen, hist_color,
+                        (panel_x + 60 + j * 12, y + 22, 8, 8)
+                    )
+    
+    def update_commands(self, actions: list[str]) -> None:
+        """Update the command display with current actions."""
+        if not hasattr(self, 'command_history'):
+            self.command_history = [[] for _ in range(10)]
+            self.last_actions = ["---"] * 10
+        
+        for i, action in enumerate(actions):
+            if i < len(self.last_actions):
+                self.last_actions[i] = action
+                if i < len(self.command_history):
+                    self.command_history[i].append(action)
+                    # Keep only last 10 commands
+                    if len(self.command_history[i]) > 10:
+                        self.command_history[i] = self.command_history[i][-10:]
     
     def tick(self, fps: int = 60) -> None:
         """Limit framerate."""

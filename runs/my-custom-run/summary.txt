@@ -1,0 +1,14 @@
+Training Run Summary
+====================
+Run: my-custom-run
+Saved: 2026-01-21 15:24:20
+
+Episodes: 8
+Timesteps: 0
+
+Reward Statistics:
+  Mean:      -400.62 ± 1059.92
+  Min:       -3204.91
+  Max:       -0.00
+  Final 100: -400.62
+  Final 10:  -400.62

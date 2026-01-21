@@ -162,6 +162,7 @@ class MissionGymEnv(gym.Env):
         self.sim_time = 0.0
         self.step_count = 0
         self.prev_distances = self.reward_fn.get_distances_to_objective(self.attackers)
+        self.last_actions = ["---"] * len(self.attackers)  # Initialize command display
         
         # Get initial observation
         obs = self._get_observation()
@@ -185,6 +186,7 @@ class MissionGymEnv(gym.Env):
         
         # Convert actions to strings
         attacker_actions = self._decode_actions(action)
+        self.last_actions = attacker_actions  # Store for rendering
         
         # Get defender actions
         dt = 1.0 / self.config.world.tick_rate
@@ -473,6 +475,10 @@ class MissionGymEnv(gym.Env):
                 return None
             self.renderer = Renderer(self.config)
             self.renderer.initialize()
+        
+        # Update command display with last actions
+        if hasattr(self, 'last_actions') and self.last_actions:
+            self.renderer.update_commands(self.last_actions)
         
         time_remaining = self.config.world.max_duration - self.sim_time
         
