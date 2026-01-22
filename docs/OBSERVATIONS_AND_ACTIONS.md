@@ -76,6 +76,10 @@ bev = env.get_debug_bev()  # Get BEV for visualization
 
 ### All Units (Ground and Air) - 9 High-Level Actions:
 
+**Note**: Attackers (your units) use these 9 directional actions. Defenders also have `TAG` and `SCAN` actions.
+
+**Combat Behavior**: When defenders execute TAG or SCAN actions, they automatically **halt** (reduce speed to 0) to provide stable aim during engagement. This creates realistic "stop and shoot" behavior, making combat more visible.
+
 | Index | Action | Target Heading | Description |
 |-------|--------|----------------|-------------|
 | 0 | `STOP` | N/A | Stop moving (speed → 0) |

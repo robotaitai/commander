@@ -191,7 +191,12 @@ class DynamicsEngine:
         action_idx = HIGH_LEVEL_ACTIONS.index(action) if action in HIGH_LEVEL_ACTIONS else 0
         target_heading = ACTION_TO_HEADING.get(action_idx)
         
-        if action == "STOP":
+        # Combat actions: halt vehicle for stable engagement
+        if action in ["TAG", "SCAN"]:
+            # Keep current heading but reduce speed to 0 for stable shooting
+            state.target_heading = None  # Maintain current heading
+            state.target_speed = 0.0      # Come to complete stop
+        elif action == "STOP":
             state.target_heading = None
             state.target_speed = 0.0
         else:

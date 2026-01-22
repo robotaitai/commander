@@ -1,4 +1,13 @@
 # Engagement (tag) configuration
+# ============================================================================
+# NOTE: To maintain checkpoint compatibility, do NOT remove TAG/SCAN actions
+# from unit configs. Instead, disable them here with enable flags.
+# ============================================================================
+
+enable:
+  tag: true              # Enable/disable TAG action (for compatibility testing)
+  scan: false             # Enable/disable SCAN action (for compatibility testing)
+
 tag_beam:
   range: 20.0             # max range (meters)
   optimal_range: 8.0      # range for full damage
@@ -22,3 +31,4 @@ scan:
   duration: 0.5           # seconds
   range_boost: 1.5        # multiplier on sensor ranges during scan
   cooldown: 5.0           # seconds between scans
+

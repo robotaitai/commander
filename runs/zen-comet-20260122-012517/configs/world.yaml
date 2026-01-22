@@ -133,3 +133,9 @@ physics:
 # Episode settings
 episode:
   max_duration: 300.0   # seconds (5 minutes)
+
+# Early termination conditions (speed up training by ending stagnant episodes)
+termination:
+  stagnation_seconds: 30.0              # End episode if no progress for this many seconds
+  min_dist_epsilon: 1.0                 # Minimum improvement (meters) to count as progress
+  early_success_capture_progress: null  # Optional: end early if this capture progress reached (e.g., 15.0)

@@ -5,7 +5,7 @@
 # ============================================================================
 
 enable:
-  tag: false              # Enable/disable TAG action (for compatibility testing)
+  tag: true              # Enable/disable TAG action (for compatibility testing)
   scan: false             # Enable/disable SCAN action (for compatibility testing)
 
 tag_beam:
@@ -31,3 +31,4 @@ scan:
   duration: 0.5           # seconds
   range_boost: 1.5        # multiplier on sensor ranges during scan
   cooldown: 5.0           # seconds between scans
+

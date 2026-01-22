@@ -294,8 +294,8 @@ class DefenderController:
         if dist_to_obj > 20.0:
             return self._move_toward(defender, obj_x, obj_y, ai.patrol_speed)
         
-        # Otherwise hold position
-        return "HOLD"
+        # Otherwise stop and hold position
+        return "STOP"
     
     def _intercept_action(
         self,
@@ -369,20 +369,19 @@ class DefenderController:
     
     def _aim_and_tag(self, defender: UnitState, detection: Detection) -> str:
         """Aim at target and tag, with jitter."""
-        category = defender.category
-        
         # Add aim jitter
         rel_bearing = detection.bearing
         jitter = self.rng.normal(0, self.randomization_config.aim_std)
         rel_bearing += jitter
         
-        # Need to turn?
+        # If aligned with target (within 15 degrees), tag
+        # Otherwise, hold position (TAG action will halt the vehicle for stable aim)
         if abs(rel_bearing) > 15:
-            if rel_bearing > 0:
-                return "TURN_LEFT" if category == "ground" else "YAW_LEFT"
-            else:
-                return "TURN_RIGHT" if category == "ground" else "YAW_RIGHT"
+            # Not aimed yet, but TAG action will stop vehicle
+            # This creates a "stop and aim" behavior
+            return "TAG"
         else:
+            # Aimed correctly, fire!
             return "TAG"
     
     def _move_toward(
@@ -392,40 +391,54 @@ class DefenderController:
         target_y: float,
         target_speed: float,
     ) -> str:
-        """Get action to move toward a target with jitter."""
-        category = defender.category
+        """Get action to move toward a target with jitter (high-level actions)."""
+        dist = defender.distance_to(target_x, target_y)
         
-        rel_bearing = defender.relative_bearing_to(target_x, target_y)
+        # If close enough, stop
+        if dist < 2.0:
+            return "STOP"
+        
+        # Calculate target heading
+        dx = target_x - defender.x
+        dy = target_y - defender.y
+        import math
+        target_heading = math.degrees(math.atan2(dy, dx)) % 360
         
         # Add heading jitter
         jitter = self.rng.normal(0, self.randomization_config.aim_std)
-        rel_bearing += jitter
+        target_heading = (target_heading + jitter) % 360
         
-        dist = defender.distance_to(target_x, target_y)
+        # Convert heading to nearest compass direction
+        # Heading: 0=East, 90=North, 180=West, 270=South
+        directions = [
+            (0, "EAST"),       # 337.5-22.5
+            (45, "NORTHEAST"), # 22.5-67.5
+            (90, "NORTH"),     # 67.5-112.5
+            (135, "NORTHWEST"),# 112.5-157.5
+            (180, "WEST"),     # 157.5-202.5
+            (225, "SOUTHWEST"),# 202.5-247.5
+            (270, "SOUTH"),    # 247.5-292.5
+            (315, "SOUTHEAST"),# 292.5-337.5
+        ]
         
-        # If close enough, hold
-        if dist < 2.0:
-            return "HOLD"
+        # Find closest compass direction
+        min_diff = 360
+        best_direction = "NORTH"
+        for heading, direction in directions:
+            # Calculate angular difference
+            diff = abs(target_heading - heading)
+            if diff > 180:
+                diff = 360 - diff
+            if diff < min_diff:
+                min_diff = diff
+                best_direction = direction
         
-        # Need to turn?
-        if abs(rel_bearing) > 20:
-            if rel_bearing > 0:
-                return "TURN_LEFT" if category == "ground" else "YAW_LEFT"
-            else:
-                return "TURN_RIGHT" if category == "ground" else "YAW_RIGHT"
-        
-        # Adjust speed
-        if defender.speed < target_speed * 0.9:
-            return "THROTTLE_UP"
-        elif defender.speed > target_speed * 1.1:
-            return "THROTTLE_DOWN"
-        
-        return "NOOP"
+        return best_direction
     
     def _patrol(self, defender: UnitState, ai: DefenderAI) -> str:
         """Get action for patrol behavior."""
         if not ai.patrol_waypoints:
-            return "HOLD"
+            return "STOP"
         
         # Get current waypoint
         waypoint = ai.patrol_waypoints[ai.current_waypoint_idx]

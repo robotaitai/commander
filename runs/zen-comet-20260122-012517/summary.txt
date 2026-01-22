@@ -1,0 +1,19 @@
+Training Run Summary
+====================
+Run: zen-comet-20260122-012517
+Saved: 2026-01-22 06:59:41
+
+Episodes: 100
+Timesteps: 15,000,768
+
+Reward Statistics:
+  Mean:      16052.34 ± 19630.41
+  Min:       -185.57
+  Max:       40102.26
+  Final 100: 16052.34
+  Final 10:  8044.99
+
+Improvement:
+  Early (first 10%):  12036.80
+  Late (last 10%):    8044.99
+  Improvement:        -3991.81
