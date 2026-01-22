@@ -6,6 +6,29 @@ A chronological diary of major changes, fixes, and insights during development.
 
 ## 2026-01-22
 
+### 19:20 - UX: Further Reduced Logger Verbosity
+**Problem:** Training logs still too verbose after initial reduction
+- Episode Metrics printed every 20 episodes (still frequent with 4 parallel envs)
+- Training Update tables every 100 iterations (~25k steps)
+- User feedback: "the logger still gets crazy"
+
+**Solution:**
+- **MetricsCallback**: `print_freq` 20 → 100 (5x reduction)
+  - Now prints every 100 episodes instead of 20
+  - With 4 envs, that's ~25 batches instead of ~5 batches
+- **RichTrainingCallback**: `print_freq` 100 → 500 (5x reduction)
+  - Now prints every 500 iterations instead of 100
+  - That's ~128k steps instead of ~26k steps per update
+- **Progress bar** still updates continuously for real-time feedback
+
+**Files Modified:**
+- `train_ppo.py`: Updated callback frequencies
+- `CHANGELOG.md`: Documented change (19:20)
+
+**Impact:** ~25x fewer console outputs while maintaining progress visibility ✅
+
+---
+
 ### 17:30 - Critical Bug Fix: Division by Zero in Line-Circle Intersection
 **Problem:** Training crashed at 92% completion (2.29M/2.5M timesteps)
 - `ZeroDivisionError` in `_line_circle_intersection` when defender/attacker at same position
@@ -621,4 +644,4 @@ termination:
 
 ---
 
-*Last Updated: 2026-01-22 17:30*
+*Last Updated: 2026-01-22 19:20*
