@@ -1,0 +1,23 @@
+{
+  "created_at": "2026-01-22T14:47:32.285866",
+  "git_commit_hash": "288e0707824ba08486a2299f1b7c615d5905aa1c",
+  "config_hash": "7cfd1d69b2a8d969270db08c7d3c5577344989550edd48965c1b7005497e9573",
+  "obs_space_signature": {
+    "type": "Box",
+    "shape": [
+      42
+    ],
+    "dtype": "float32",
+    "low": -Infinity,
+    "high": Infinity
+  },
+  "action_space_signature": {
+    "type": "MultiDiscrete",
+    "nvec": [
+      9,
+      9,
+      9,
+      9
+    ]
+  }
+}

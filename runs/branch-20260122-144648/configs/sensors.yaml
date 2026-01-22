@@ -1,0 +1,60 @@
+# Sensor configurations
+sensors:
+  lidar_short:
+    type: lidar
+    num_rays: 16
+    max_range: 20.0       # meters
+    fov: 360.0            # degrees (full circle)
+    update_rate: 20.0     # Hz
+
+  lidar_medium:
+    type: lidar
+    num_rays: 32
+    max_range: 40.0
+    fov: 360.0
+    update_rate: 20.0
+
+  lidar_long:
+    type: lidar
+    num_rays: 64
+    max_range: 60.0
+    fov: 360.0
+    update_rate: 20.0
+
+  radar_short:
+    type: radar
+    max_range: 30.0
+    fov: 180.0            # front hemisphere
+    range_noise_std: 1.0  # meters
+    bearing_noise_std: 5.0  # degrees
+    update_rate: 10.0
+
+  radar_medium:
+    type: radar
+    max_range: 50.0
+    fov: 180.0
+    range_noise_std: 2.0
+    bearing_noise_std: 3.0
+    update_rate: 10.0
+
+  radar_long:
+    type: radar
+    max_range: 80.0
+    fov: 120.0
+    range_noise_std: 3.0
+    bearing_noise_std: 2.0
+    update_rate: 5.0
+
+  camera_front:
+    type: camera
+    fov: 60.0             # degrees
+    max_range: 40.0       # effective detection range
+    requires_los: true    # blocked by obstacles
+    update_rate: 30.0
+
+  camera_wide:
+    type: camera
+    fov: 120.0
+    max_range: 30.0
+    requires_los: true
+    update_rate: 30.0

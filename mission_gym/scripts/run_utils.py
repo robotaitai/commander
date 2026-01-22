@@ -358,6 +358,28 @@ def save_lineage(
             json.dump(metadata, f, indent=2, default=str)
 
 
+def normalize_space_signature(sig: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Normalize space signature by converting string values to appropriate types.
+    Handles legacy lineage files that saved nvec/shape as strings.
+    """
+    sig = sig.copy()
+    
+    # Convert nvec strings to ints (for MultiDiscrete)
+    if "nvec" in sig and isinstance(sig["nvec"], list):
+        sig["nvec"] = [int(x) if isinstance(x, str) else x for x in sig["nvec"]]
+    
+    # Convert shape strings to ints (for Box)
+    if "shape" in sig and isinstance(sig["shape"], list):
+        sig["shape"] = [int(x) if isinstance(x, str) else x for x in sig["shape"]]
+    
+    # Recursively handle Dict spaces
+    if "spaces" in sig and isinstance(sig["spaces"], dict):
+        sig["spaces"] = {k: normalize_space_signature(v) for k, v in sig["spaces"].items()}
+    
+    return sig
+
+
 def check_checkpoint_compatibility(
     checkpoint_path: str,
     current_obs_space,
@@ -383,8 +405,8 @@ def check_checkpoint_compatibility(
                 
                 # Compare observation space
                 if "obs_space_signature" in parent_lineage:
-                    parent_obs_sig = parent_lineage["obs_space_signature"]
-                    current_obs_sig = obs_space_signature(current_obs_space)
+                    parent_obs_sig = normalize_space_signature(parent_lineage["obs_space_signature"])
+                    current_obs_sig = normalize_space_signature(obs_space_signature(current_obs_space))
                     
                     if parent_obs_sig != current_obs_sig:
                         return False, (
@@ -399,8 +421,8 @@ def check_checkpoint_compatibility(
                 
                 # Compare action space
                 if "action_space_signature" in parent_lineage:
-                    parent_act_sig = parent_lineage["action_space_signature"]
-                    current_act_sig = action_space_signature(current_action_space)
+                    parent_act_sig = normalize_space_signature(parent_lineage["action_space_signature"])
+                    current_act_sig = normalize_space_signature(action_space_signature(current_action_space))
                     
                     if parent_act_sig != current_act_sig:
                         return False, (

@@ -1,0 +1,33 @@
+# Scenario randomization config
+# Adds variability to scenario setup for training robustness
+
+spawn_randomization:
+  enabled: true
+  
+  attackers:
+    # Jitter added to attacker spawn positions
+    jitter_x: 5.0  # meters
+    jitter_y: 5.0  # meters
+  
+  defenders:
+    # Jitter added to defender spawn positions
+    jitter_x: 8.0  # meters
+    jitter_y: 8.0  # meters
+
+objective_randomization:
+  enabled: true
+  mode: "jitter"  # "jitter" or "discrete"
+  
+  # Mode: jitter - add random offset to base position
+  jitter:
+    x_range: 10.0  # +/- meters from base position
+    y_range: 10.0
+  
+  # Mode: discrete - choose from list of fixed positions
+  # (Not implemented yet, would select from predefined list)
+  discrete_positions: []
+
+obstacle_randomization:
+  enabled: false  # Not implemented yet
+  # Future: select from multiple obstacle layout templates
+  templates: []

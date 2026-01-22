@@ -1,0 +1,29 @@
+# Defender domain randomization config
+# Adds variability to defender behavior for training robustness
+
+behavior_modes:
+  # Probability distribution over defender strategies
+  # Must sum to 1.0
+  patrol: 0.5          # Standard patrol around objective
+  guard_objective: 0.3 # Stay close to objective, minimal movement
+  intercept: 0.2       # Aggressively chase detected attackers
+
+reaction:
+  # Delay before defender reacts to new detections (seconds)
+  delay_min: 0.0
+  delay_max: 0.5
+  
+  # Probability of taking random action instead of AI decision
+  p_random_action: 0.05  # 5% epsilon-random per step
+  
+jitter:
+  # Angular jitter added to heading decisions (degrees)
+  aim_std: 5.0        # Std dev of Gaussian noise to aim/heading
+  
+  # Decision noise
+  decision_noise: 0.1  # Probability of sub-optimal decision
+
+patrol_randomization:
+  # Randomize patrol waypoints per episode
+  enabled: true
+  jitter_radius: 10.0  # Max distance to move waypoint from base position (meters)

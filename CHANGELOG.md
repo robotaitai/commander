@@ -6,6 +6,28 @@ A chronological diary of major changes, fixes, and insights during development.
 
 ## 2026-01-22
 
+### 15:17 - Bug Fix: Legacy Lineage Compatibility Check
+**Problem:** Training with `--parent-checkpoint` failed with "Action space mismatch" even when spaces were identical
+
+**Root Cause:**
+- Old `lineage.json` files (before our JSON fix) stored `nvec` as strings: `["9", "9", "9", "9"]`
+- New code produces integers: `[9, 9, 9, 9]`
+- Direct comparison failed due to type mismatch, blocking checkpoint loading
+
+**Solution:** Added `normalize_space_signature()` function:
+- Converts string values to ints before comparison
+- Handles both old (string) and new (int) lineage formats
+- Makes compatibility check backward-compatible
+
+**Files Changed:**
+- `mission_gym/scripts/run_utils.py`: Added normalization function and updated comparisons
+
+**Impact:** ✅ Can now load checkpoints from runs created before the JSON fix
+
+**User Experience:** Successfully started training with 2 defenders branched from 1-defender model
+
+---
+
 ### 14:45 - Bug Fix: JSON Serialization for Checkpoint Compatibility
 **Problem:** Training crashed when loading checkpoints with `TypeError: Object of type int64 is not JSON serializable`
 
@@ -430,4 +452,4 @@ termination:
 
 ---
 
-*Last Updated: 2026-01-22 14:45*
+*Last Updated: 2026-01-22 15:17*
