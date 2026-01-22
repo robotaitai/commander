@@ -217,7 +217,7 @@ def main():
     print()
     print_step(3, "Creating environment")
     render_mode = None if args.no_render else "human"
-    env = MissionGymEnv(render_mode=render_mode, config=config)
+    env = MissionGymEnv(render_mode=render_mode, config_dir=config_dir)
     print_info(f"Render mode: {'disabled' if args.no_render else 'enabled'}")
     print_info(f"Verbose mode: {'ON - showing live commands' if args.verbose else 'OFF'}")
     
@@ -344,11 +344,16 @@ def main():
         episode_rewards.append(total_reward)
         episode_lengths.append(step_count)
         
-        capture_progress = info.get("capture_progress", 0)
-        attackers_alive = info.get("attackers_alive", 0)
-        defenders_alive = info.get("defenders_alive", 0)
+        # Get info with proper fallbacks (training uses namespaced keys)
+        capture_progress = info.get("capture_progress", info.get("kpi/final_capture_progress", 0.0))
+        attackers_alive = info.get("attackers_alive", info.get("fleet/attackers_alive_end", 0))
+        defenders_alive = info.get("defenders_alive", info.get("fleet/defenders_alive_end", 0))
         
-        if terminated and capture_progress >= 20:
+        # Check for win using config-based threshold or win flag
+        win_flag = info.get("win", info.get("kpi/win", 0))
+        required_capture_time = env.config.scenario.objective.capture_time_required
+        
+        if win_flag or (terminated and capture_progress >= (required_capture_time - 1e-6)):
             wins += 1
             result = c.colorize("✓ WIN", c.BRIGHT_GREEN)
             result_str = "WIN"

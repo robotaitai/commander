@@ -172,9 +172,12 @@ def main():
     print()
     print_step(3, f"Creating {args.n_envs} parallel environments")
     
+    # Use config snapshot from run directory to ensure consistency
+    cfg_dir = run_dir / "configs"
+    
     def make_env(seed: int):
         def _init():
-            env = MissionGymEnv()
+            env = MissionGymEnv(config_dir=cfg_dir)
             env.reset(seed=seed)
             return env
         return _init
@@ -195,7 +198,7 @@ def main():
     # Create evaluation environment
     print()
     print_step(4, "Creating evaluation environment")
-    eval_env = MissionGymEnv()
+    eval_env = MissionGymEnv(config_dir=cfg_dir)
     eval_env.reset(seed=args.seed + 1000)
     print_info("Evaluation environment created")
     

@@ -1,5 +1,6 @@
 """Main Gymnasium environment for Mission Gym."""
 
+from pathlib import Path
 from typing import Any, Optional
 import math
 
@@ -40,13 +41,15 @@ class MissionGymEnv(gym.Env):
     def __init__(
         self,
         render_mode: Optional[str] = None,
+        config_dir: Optional[Path] = None,
         config: Optional[FullConfig] = None,
         seed: Optional[int] = None,
     ):
         super().__init__()
         
         # Load configuration
-        self.config = config if config is not None else FullConfig.load()
+        self.config_dir = config_dir
+        self.config = config if config is not None else FullConfig.load(config_dir=config_dir)
         
         # Initialize RNG
         self._np_random = np.random.default_rng(seed)
