@@ -6,6 +6,41 @@ A chronological diary of major changes, fixes, and insights during development.
 
 ## 2026-01-22
 
+### 17:30 - Critical Bug Fix: Division by Zero in Line-Circle Intersection
+**Problem:** Training crashed at 92% completion (2.29M/2.5M timesteps)
+- `ZeroDivisionError` in `_line_circle_intersection` when defender/attacker at same position
+- Happened when checking line-of-sight: `a = dx² + dy² = 0` caused division by zero
+- Rare edge case triggered after 11,780 episodes (1.2 hours of training)
+
+**Root Cause:**
+- Quadratic formula used for line-segment intersection assumes non-zero line length
+- When two units occupy same position (or very close), `dx=dy=0` → `a=0`
+- No guard against this edge case
+
+**Solution:**
+- Added check: if `a < 1e-10`, treat as point-circle distance check
+- If point is inside circle, return `True`; else `False`
+- Avoids division while maintaining correctness
+
+**Files Modified:**
+- `mission_gym/dynamics.py`: Added zero-length segment handling
+- `CHANGELOG.md`: Documented fix (17:30)
+
+**How to Resume Training:**
+```bash
+# Find the latest checkpoint
+ls -lht runs/*/checkpoints/*.zip | head -1
+
+# Resume from checkpoint (example)
+python -m mission_gym.scripts.train_ppo \
+  --timesteps 210000 \
+  --parent-checkpoint runs/<run-name>/checkpoints/rl_model_<step>_steps.zip
+```
+
+**Impact:** Training can now complete without crashes ✅
+
+---
+
 ### 17:20 - Bug Fix: Unified Dashboard Shows Active Run
 **Problem:** Unified dashboard (`runs/dashboard.html`) didn't show the currently active/training run by default
 - Dashboard was sorted by directory name (creation time), not by which run is actively updating
@@ -586,4 +621,4 @@ termination:
 
 ---
 
-*Last Updated: 2026-01-22 17:20*
+*Last Updated: 2026-01-22 17:30*

@@ -328,6 +328,13 @@ class DynamicsEngine:
         fy = y1 - cy
         
         a = dx * dx + dy * dy
+        
+        # Edge case: zero-length line segment (both points are the same)
+        # Just check if the point is inside the circle
+        if a < 1e-10:
+            dist_sq = fx * fx + fy * fy
+            return dist_sq <= r * r
+        
         b = 2 * (fx * dx + fy * dy)
         c = fx * fx + fy * fy - r * r
         
