@@ -249,7 +249,7 @@ def obs_space_signature(space) -> Dict[str, Any]:
     if isinstance(space, spaces.Box):
         return {
             "type": "Box",
-            "shape": list(space.shape),
+            "shape": [int(x) for x in space.shape],
             "dtype": str(space.dtype),
             "low": float(space.low.flat[0]) if space.low.size > 0 else None,
             "high": float(space.high.flat[0]) if space.high.size > 0 else None,
@@ -262,7 +262,7 @@ def obs_space_signature(space) -> Dict[str, Any]:
     elif isinstance(space, spaces.MultiDiscrete):
         return {
             "type": "MultiDiscrete",
-            "nvec": list(space.nvec),
+            "nvec": [int(x) for x in space.nvec],
         }
     else:
         return {
@@ -283,12 +283,12 @@ def action_space_signature(space) -> Dict[str, Any]:
     elif isinstance(space, spaces.MultiDiscrete):
         return {
             "type": "MultiDiscrete",
-            "nvec": list(space.nvec),
+            "nvec": [int(x) for x in space.nvec],
         }
     elif isinstance(space, spaces.Box):
         return {
             "type": "Box",
-            "shape": list(space.shape),
+            "shape": [int(x) for x in space.shape],
             "dtype": str(space.dtype),
         }
     else:

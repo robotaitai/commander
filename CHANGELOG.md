@@ -6,6 +6,27 @@ A chronological diary of major changes, fixes, and insights during development.
 
 ## 2026-01-22
 
+### 14:45 - Bug Fix: JSON Serialization for Checkpoint Compatibility
+**Problem:** Training crashed when loading checkpoints with `TypeError: Object of type int64 is not JSON serializable`
+
+**Root Cause:** 
+- `action_space_signature()` and `obs_space_signature()` used `list(space.nvec)` and `list(space.shape)`
+- These created lists of numpy `int64` objects (not native Python `int`)
+- `json.dumps()` can't serialize numpy types directly
+
+**Solution:** Convert all numpy types to native Python types:
+- Changed `list(space.nvec)` → `[int(x) for x in space.nvec]`
+- Changed `list(space.shape)` → `[int(x) for x in space.shape]`
+
+**Files Changed:**
+- `mission_gym/scripts/run_utils.py`: Fixed both signature functions
+
+**User Report:** Resume training failed immediately with JSON error
+
+**Impact:** 🔧 Checkpoint loading now works correctly
+
+---
+
 ### 13:30 - Config Snapshot System Implementation
 **Changes:**
 - Implemented config loading from run directories
@@ -409,4 +430,4 @@ termination:
 
 ---
 
-*Last Updated: 2026-01-22 13:30*
+*Last Updated: 2026-01-22 14:45*
