@@ -14,6 +14,7 @@ unit_types:
     radius: 2.5             # collision radius - LARGER, can't fit through tight gaps
     initial_integrity: 100.0
     initial_speed: 0.0      # Start stopped (high-level controller handles speed)
+    tag_damage: 25.0        # Standard ground firepower
     sensors:
       - lidar_short
       - camera_front
@@ -36,6 +37,7 @@ unit_types:
     radius: 2.0             # slightly smaller than UGV_A but still substantial
     initial_integrity: 80.0
     initial_speed: 0.0      # Start stopped (high-level controller handles speed)
+    tag_damage: 20.0        # Lighter, faster unit
     sensors:
       - lidar_short
       - radar_medium
@@ -58,6 +60,7 @@ unit_types:
     radius: 0.5             # small - can fly over obstacles at altitude
     initial_integrity: 30.0
     initial_speed: 0.0      # Start stopped (high-level controller handles speed)
+    tag_damage: 15.0        # Light aerial firepower
     altitude_bands: 3       # 0, 1, 2
     altitude_change_time: 1.0  # seconds to change band
     sensors:
@@ -82,6 +85,7 @@ unit_types:
     radius: 0.4             # smallest footprint
     initial_integrity: 30.0
     initial_speed: 0.0      # Start stopped (high-level controller handles speed)
+    tag_damage: 12.0        # Scout/recon unit
     altitude_bands: 3
     altitude_change_time: 0.8
     sensors:

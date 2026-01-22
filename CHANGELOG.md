@@ -6,6 +6,32 @@ A chronological diary of major changes, fixes, and insights during development.
 
 ## 2026-01-22
 
+### 16:48 - Config: Added TAG Damage to Attacker Units
+**Action:** Applied per-unit TAG damage to all attacker types
+
+**Attacker Firepower Balance:**
+- **UGV_A:** 25.0 damage (standard ground firepower)
+- **UGV_B:** 20.0 damage (lighter, faster unit)
+- **UAV_A:** 15.0 damage (light aerial firepower)
+- **UAV_B:** 12.0 damage (scout/recon unit)
+
+**Defender Firepower Balance (from 16:44):**
+- **DEF_UGV:** 35.0 damage (heavy defender)
+- **DEF_UAV:** 10.0 damage (light defender)
+
+**Files Modified:**
+- `configs/units_attackers.yaml`: Added `tag_damage` to all 4 attacker types
+
+**User Changes Applied:**
+- `DEF_UGV.initial_integrity`: 120 → 150 (more durable)
+- `DEF_UAV.initial_integrity`: 80 → 50 (less durable)
+
+**Testing:** ✅ All 77 tests passing
+
+**Impact:** Complete unit-level firepower customization for strategic balance
+
+---
+
 ### 16:44 - Feature: Per-Unit TAG Damage Customization
 **Requirement:** User wanted different attack power for defender types:
 - DEF_UGV: 35 damage
@@ -499,4 +525,4 @@ termination:
 
 ---
 
-*Last Updated: 2026-01-22 16:44*
+*Last Updated: 2026-01-22 16:48*
