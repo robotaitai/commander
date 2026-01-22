@@ -1,9 +1,41 @@
 #!/usr/bin/env python3
 """Evaluate a trained model with visualization and detailed stats."""
 
+# Suppress TensorFlow/TensorBoard noise (MUST be first, before ANY imports)
+import os
+# Set environment variables before any TensorFlow imports
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'  # 0=all, 1=no info, 2=no warnings, 3=errors only
+os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
+os.environ['AUTOGRAPH_VERBOSITY'] = '0'
+os.environ['TF_DISABLE_MKL'] = '1'
+os.environ['TF_DISABLE_POOL_ALLOCATOR'] = '1'
+
+import sys
+import warnings
+from io import StringIO
+
+# Suppress all Python warnings
+warnings.filterwarnings('ignore')
+warnings.filterwarnings('ignore', category=UserWarning)
+warnings.filterwarnings('ignore', category=DeprecationWarning)
+warnings.filterwarnings('ignore', category=FutureWarning)
+warnings.filterwarnings('ignore', category=ImportWarning)
+warnings.filterwarnings('ignore', message='.*tensorboard.*')
+warnings.filterwarnings('ignore', message='.*matplotlib.*')
+
+# Context manager to suppress stderr during noisy imports
+class SuppressStderr:
+    def __enter__(self):
+        self._original_stderr = sys.stderr
+        sys.stderr = StringIO()
+        return self
+    
+    def __exit__(self, *args):
+        sys.stderr = self._original_stderr
+        return False
+
 import argparse
 import json
-import sys
 import time
 from collections import deque
 from pathlib import Path
@@ -168,7 +200,9 @@ def main():
     print()
     
     try:
-        from stable_baselines3 import PPO
+        # Suppress TensorBoard/TensorFlow errors during import
+        with SuppressStderr():
+            from stable_baselines3 import PPO
         from mission_gym.env import MissionGymEnv
         from mission_gym.config import FullConfig
     except ImportError as e:

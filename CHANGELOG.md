@@ -6,6 +6,29 @@ A chronological diary of major changes, fixes, and insights during development.
 
 ## 2026-01-22
 
+### 17:10 - UX: Cleaned Up Training Log Output
+**Problem:** Training logs were cluttered with TensorFlow/TensorBoard errors and warnings:
+- Multiple `ImportError: cannot import name 'notf' from 'tensorboard.compat'` errors
+- `AttributeError: 'MessageFactory' object has no attribute 'GetPrototype'` errors
+- TensorFlow oneDNN, cuDNN, cuFFT, cuBLAS warnings
+- Matplotlib Axes3D warnings
+
+**Solution:**
+1. Set `TF_CPP_MIN_LOG_LEVEL=3` at the very top (before any imports)
+2. Added `SuppressStderr` context manager to silence stderr during noisy imports
+3. Wrapped `stable_baselines3` imports with suppression context
+4. Added comprehensive warning filters for TensorBoard, TensorFlow, Matplotlib
+5. Applied same fixes to both `train_ppo.py` and `evaluate.py`
+
+**Files Modified:**
+- `mission_gym/scripts/train_ppo.py`: Added early env vars + suppression context
+- `mission_gym/scripts/evaluate.py`: Added early env vars + suppression context
+- `CHANGELOG.md`: Documented fix (17:10)
+
+**Impact:** Clean, readable training logs with only relevant information displayed ✅
+
+---
+
 ### 16:48 - Config: Added TAG Damage to Attacker Units
 **Action:** Applied per-unit TAG damage to all attacker types
 
@@ -525,4 +548,4 @@ termination:
 
 ---
 
-*Last Updated: 2026-01-22 16:48*
+*Last Updated: 2026-01-22 17:10*

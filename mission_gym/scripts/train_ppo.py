@@ -1,13 +1,38 @@
 #!/usr/bin/env python3
 """PPO training script for Mission Gym using Stable-Baselines3."""
 
-# Suppress TensorFlow/TensorBoard noise (must be before any TF imports)
+# Suppress TensorFlow/TensorBoard noise (MUST be first, before ANY imports)
 import os
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'  # Suppress TF logging
-os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'  # Disable oneDNN warnings
+# Set environment variables before any TensorFlow imports
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'  # 0=all, 1=no info, 2=no warnings, 3=errors only
+os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
+os.environ['AUTOGRAPH_VERBOSITY'] = '0'
+os.environ['TF_DISABLE_MKL'] = '1'
+os.environ['TF_DISABLE_POOL_ALLOCATOR'] = '1'
+
+import sys
 import warnings
-warnings.filterwarnings('ignore', category=UserWarning, module='tensorboard')
+from io import StringIO
+
+# Suppress all Python warnings
+warnings.filterwarnings('ignore')
+warnings.filterwarnings('ignore', category=UserWarning)
 warnings.filterwarnings('ignore', category=DeprecationWarning)
+warnings.filterwarnings('ignore', category=FutureWarning)
+warnings.filterwarnings('ignore', category=ImportWarning)
+warnings.filterwarnings('ignore', message='.*tensorboard.*')
+warnings.filterwarnings('ignore', message='.*matplotlib.*')
+
+# Context manager to suppress stderr during noisy imports
+class SuppressStderr:
+    def __enter__(self):
+        self._original_stderr = sys.stderr
+        sys.stderr = StringIO()
+        return self
+    
+    def __exit__(self, *args):
+        sys.stderr = self._original_stderr
+        return False
 
 import argparse
 import sys
@@ -148,9 +173,11 @@ def main():
     print()
     print_step(2, "Importing dependencies")
     try:
-        from stable_baselines3 import PPO
-        from stable_baselines3.common.callbacks import CheckpointCallback, CallbackList
-        from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv
+        # Suppress TensorBoard/TensorFlow errors during import
+        with SuppressStderr():
+            from stable_baselines3 import PPO
+            from stable_baselines3.common.callbacks import CheckpointCallback, CallbackList
+            from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv
         print_info("Stable-Baselines3 imported")
     except ImportError as e:
         print_error(f"Import failed: {e}")
