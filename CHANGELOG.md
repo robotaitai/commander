@@ -6,6 +6,21 @@ A chronological diary of major changes, fixes, and insights during development.
 
 ## 2026-01-22
 
+### 15:25 - UX Improvement: Auto-append .zip to Checkpoint Paths
+**Problem:** Users had to remember to add `.zip` extension to checkpoint paths  
+**Improvement:** Automatically appends `.zip` if file not found without it  
+**Impact:** Simpler CLI usage - both work now:
+- `--parent-checkpoint runs/my-run/final_model` ✓
+- `--parent-checkpoint runs/my-run/final_model.zip` ✓
+
+**Files Modified:**
+- `mission_gym/scripts/train_ppo.py`: Auto-resolve checkpoint path before existence check
+- `mission_gym/scripts/run_utils.py`: Auto-resolve in compatibility check
+
+**User Experience:** No more "Checkpoint not found" errors due to missing `.zip`
+
+---
+
 ### 15:17 - Bug Fix: Legacy Lineage Compatibility Check
 **Problem:** Training with `--parent-checkpoint` failed with "Action space mismatch" even when spaces were identical
 
@@ -452,4 +467,4 @@ termination:
 
 ---
 
-*Last Updated: 2026-01-22 15:17*
+*Last Updated: 2026-01-22 15:25*

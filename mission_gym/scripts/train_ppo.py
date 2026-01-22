@@ -268,13 +268,21 @@ def main():
     # Check compatibility if loading checkpoint
     if args.load_checkpoint:
         checkpoint_path_obj = Path(args.load_checkpoint)
+        
+        # Auto-append .zip if not present and file doesn't exist
+        if not checkpoint_path_obj.exists() and not str(checkpoint_path_obj).endswith('.zip'):
+            checkpoint_with_zip = Path(str(checkpoint_path_obj) + '.zip')
+            if checkpoint_with_zip.exists():
+                checkpoint_path_obj = checkpoint_with_zip
+                args.load_checkpoint = str(checkpoint_path_obj)  # Update the args for later use
+        
         if not checkpoint_path_obj.exists():
             print_error(f"Checkpoint not found: {checkpoint_path_obj}")
             return 1
         
         print_info(f"Checking checkpoint compatibility...")
         is_compatible, error_msg = check_checkpoint_compatibility(
-            args.load_checkpoint,
+            str(checkpoint_path_obj),
             obs_space,
             action_space,
         )

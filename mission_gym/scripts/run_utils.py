@@ -392,6 +392,12 @@ def check_checkpoint_compatibility(
     """
     checkpoint_path = Path(checkpoint_path)
     
+    # Auto-append .zip if not present and file doesn't exist
+    if not checkpoint_path.exists() and not str(checkpoint_path).endswith('.zip'):
+        checkpoint_with_zip = Path(str(checkpoint_path) + '.zip')
+        if checkpoint_with_zip.exists():
+            checkpoint_path = checkpoint_with_zip
+    
     # Try to find parent run's lineage
     if "runs" in checkpoint_path.parts:
         runs_idx = checkpoint_path.parts.index("runs")
