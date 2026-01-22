@@ -1,7 +1,9 @@
 """Scenario management - spawning and objective tracking."""
 
 from dataclasses import dataclass
+from typing import Optional
 import math
+import numpy as np
 
 from mission_gym.config import ScenarioConfig, UnitTypeConfig
 from mission_gym.dynamics import UnitState
@@ -26,10 +28,20 @@ class ScenarioManager:
         config: ScenarioConfig,
         attacker_types: dict[str, UnitTypeConfig],
         defender_types: dict[str, UnitTypeConfig],
+        randomization_config: Optional['ScenarioRandomizationConfig'] = None,
+        rng: Optional['np.random.Generator'] = None,
     ):
+        import numpy as np
+        
         self.config = config
         self.attacker_types = attacker_types
         self.defender_types = defender_types
+        self.randomization_config = randomization_config
+        self.rng = rng or np.random.default_rng()
+        
+        # Base objective position (will be randomized in reset if enabled)
+        self.base_objective_x = config.objective.x
+        self.base_objective_y = config.objective.y
         
         # Create objective
         self.objective = ObjectiveState(
@@ -41,7 +53,7 @@ class ScenarioManager:
     
     def spawn_units(self) -> tuple[list[UnitState], list[UnitState]]:
         """
-        Spawn all units according to scenario config.
+        Spawn all units according to scenario config with optional randomization.
         
         Returns:
             Tuple of (attackers, defenders)
@@ -57,9 +69,21 @@ class ScenarioManager:
             if type_config is None:
                 continue
             
+            # Apply spawn jitter if enabled
+            x, y = spawn.x, spawn.y
+            if self.randomization_config and self.randomization_config.spawn_enabled:
+                x += self.rng.uniform(
+                    -self.randomization_config.attacker_jitter_x,
+                    self.randomization_config.attacker_jitter_x
+                )
+                y += self.rng.uniform(
+                    -self.randomization_config.attacker_jitter_y,
+                    self.randomization_config.attacker_jitter_y
+                )
+            
             state = UnitState(
-                x=spawn.x,
-                y=spawn.y,
+                x=x,
+                y=y,
                 heading=spawn.heading,
                 speed=type_config.initial_speed,  # Start with configured speed
                 altitude=spawn.altitude,
@@ -80,9 +104,21 @@ class ScenarioManager:
             if type_config is None:
                 continue
             
+            # Apply spawn jitter if enabled
+            x, y = spawn.x, spawn.y
+            if self.randomization_config and self.randomization_config.spawn_enabled:
+                x += self.rng.uniform(
+                    -self.randomization_config.defender_jitter_x,
+                    self.randomization_config.defender_jitter_x
+                )
+                y += self.rng.uniform(
+                    -self.randomization_config.defender_jitter_y,
+                    self.randomization_config.defender_jitter_y
+                )
+            
             state = UnitState(
-                x=spawn.x,
-                y=spawn.y,
+                x=x,
+                y=y,
                 heading=spawn.heading,
                 altitude=spawn.altitude,
                 target_altitude=spawn.altitude,
@@ -99,10 +135,22 @@ class ScenarioManager:
         return attackers, defenders
     
     def reset(self) -> tuple[list[UnitState], list[UnitState], ObjectiveState]:
-        """Reset the scenario and return fresh state."""
+        """Reset the scenario and return fresh state with optional randomization."""
+        # Randomize objective position if enabled
+        obj_x, obj_y = self.base_objective_x, self.base_objective_y
+        if self.randomization_config and self.randomization_config.objective_enabled:
+            obj_x += self.rng.uniform(
+                -self.randomization_config.objective_jitter_x,
+                self.randomization_config.objective_jitter_x
+            )
+            obj_y += self.rng.uniform(
+                -self.randomization_config.objective_jitter_y,
+                self.randomization_config.objective_jitter_y
+            )
+        
         self.objective = ObjectiveState(
-            x=self.config.objective.x,
-            y=self.config.objective.y,
+            x=obj_x,
+            y=obj_y,
             radius=self.config.objective.radius,
             capture_time_required=self.config.objective.capture_time_required,
         )

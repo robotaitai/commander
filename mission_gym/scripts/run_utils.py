@@ -37,6 +37,35 @@ def generate_run_name() -> str:
     return f"{adj}-{noun}-{timestamp}"
 
 
+def load_eval_seeds() -> List[int]:
+    """
+    Load held-out evaluation seeds from eval_seeds.txt.
+    
+    Returns:
+        List of seed integers for consistent evaluation
+    """
+    from mission_gym.config import get_config_dir
+    
+    eval_seeds_file = get_config_dir() / "eval_seeds.txt"
+    
+    if not eval_seeds_file.exists():
+        # Return default seeds if file doesn't exist
+        return [42, 123, 777, 1337, 2024, 314159, 9999, 54321, 11111, 88888]
+    
+    seeds = []
+    with open(eval_seeds_file, 'r') as f:
+        for line in f:
+            line = line.strip()
+            # Skip comments and empty lines
+            if line and not line.startswith('#'):
+                try:
+                    seeds.append(int(line))
+                except ValueError:
+                    pass  # Skip invalid lines
+    
+    return seeds if seeds else [42, 123, 777]  # Fallback if file is empty
+
+
 def get_runs_dir() -> Path:
     """Get the runs directory (create if needed)."""
     # Find project root (where configs/ is located)

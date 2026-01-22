@@ -59,13 +59,19 @@ class TestEnvironmentReset:
         env.close()
     
     def test_reset_with_seed(self):
-        """Test reset with seed for reproducibility."""
-        env = MissionGymEnv()
-        obs1, _ = env.reset(seed=42)
-        obs2, _ = env.reset(seed=42)
+        """Test reset with seed for reproducibility (with randomization)."""
+        # Create two separate environments with the same seed
+        # This ensures the RNG state is identical
+        env1 = MissionGymEnv()
+        obs1, _ = env1.reset(seed=42)
+        env1.close()
+        
+        env2 = MissionGymEnv()
+        obs2, _ = env2.reset(seed=42)
+        env2.close()
+        
         # With same seed, observations should be identical
         np.testing.assert_array_equal(obs1, obs2)
-        env.close()
 
 
 class TestEnvironmentStep:

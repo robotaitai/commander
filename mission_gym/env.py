@@ -51,11 +51,13 @@ class MissionGymEnv(gym.Env):
         # Initialize RNG
         self._np_random = np.random.default_rng(seed)
         
-        # Initialize scenario manager
+        # Initialize scenario manager with randomization
         self.scenario = ScenarioManager(
             self.config.scenario,
             self.config.attacker_types,
             self.config.defender_types,
+            randomization_config=self.config.scenario_randomization,
+            rng=self._np_random,
         )
         
         # Initialize backend
@@ -82,8 +84,23 @@ class MissionGymEnv(gym.Env):
             self.config.scenario.objective,
         )
         
-        # Initialize defender controller
-        self.defender_controller = DefenderController(self.sensors)
+        # Initialize defender controller with randomization
+        from mission_gym.defenders import DefenderRandomizationConfig as DefRandConfig
+        defender_rand_config = DefRandConfig(
+            mode_probs=self.config.defender_randomization.mode_probs,
+            delay_min=self.config.defender_randomization.delay_min,
+            delay_max=self.config.defender_randomization.delay_max,
+            p_random_action=self.config.defender_randomization.p_random_action,
+            aim_std=self.config.defender_randomization.aim_std,
+            patrol_jitter_enabled=self.config.defender_randomization.patrol_jitter_enabled,
+            patrol_jitter_radius=self.config.defender_randomization.patrol_jitter_radius,
+        )
+        self.defender_controller = DefenderController(
+            self.sensors,
+            randomization_config=defender_rand_config,
+            objective_pos=(self.config.scenario.objective.x, self.config.scenario.objective.y),
+            rng=self._np_random,
+        )
         
         # State
         self.attackers: list[UnitState] = []
@@ -154,6 +171,9 @@ class MissionGymEnv(gym.Env):
         if seed is not None:
             self._np_random = np.random.default_rng(seed)
             self.sensors.rng = self._np_random
+            # Update RNGs in scenario and defender controller for reproducibility
+            self.scenario.rng = self._np_random
+            self.defender_controller.rng = self._np_random
         
         # Reset scenario
         self.attackers, self.defenders, self.objective = self.scenario.reset()
@@ -388,6 +408,20 @@ class MissionGymEnv(gym.Env):
                 reason=outcome,
                 attackers=self.attackers,
             )
+            
+            # Apply outcome-based terminal penalties
+            terminal_penalty = 0.0
+            if outcome == "stalled":
+                terminal_penalty = self.config.reward.outcome_penalty_stalled
+            elif outcome == "timeout":
+                terminal_penalty = self.config.reward.outcome_penalty_timeout
+            elif outcome == "all_disabled":
+                terminal_penalty = self.config.reward.outcome_penalty_all_disabled
+            
+            if terminal_penalty != 0.0:
+                reward += terminal_penalty
+                info["terminal_penalty"] = terminal_penalty
+                info["terminal_penalty_reason"] = outcome
         
         return obs, reward, terminated, truncated, info
     

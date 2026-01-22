@@ -312,6 +312,11 @@ class RewardConfig:
     unit_disabled_penalty: float
     detected_time_penalty: float
     
+    # Outcome penalties (terminal rewards)
+    outcome_penalty_stalled: float
+    outcome_penalty_timeout: float
+    outcome_penalty_all_disabled: float
+    
     # Toggles
     enable_detected_penalty: bool
     
@@ -347,6 +352,11 @@ class RewardConfig:
             unit_disabled_penalty=weights.get("unit_disabled_penalty", -20.0),
             detected_time_penalty=weights.get("detected_time_penalty", -0.05),
             
+            # Outcome penalties
+            outcome_penalty_stalled=data.get("outcome_penalties", {}).get("stalled", -50.0),
+            outcome_penalty_timeout=data.get("outcome_penalties", {}).get("timeout", -20.0),
+            outcome_penalty_all_disabled=data.get("outcome_penalties", {}).get("all_disabled", -100.0),
+            
             # Toggles
             enable_detected_penalty=enable.get("detected_time_penalty", True),
         )
@@ -371,6 +381,88 @@ class TerminationConfig:
 
 
 @dataclass
+class DefenderRandomizationConfig:
+    """Defender domain randomization configuration."""
+    mode_probs: dict[str, float]
+    delay_min: float
+    delay_max: float
+    p_random_action: float
+    aim_std: float
+    patrol_jitter_enabled: bool
+    patrol_jitter_radius: float
+    
+    @classmethod
+    def from_yaml(cls) -> "DefenderRandomizationConfig":
+        try:
+            data = load_yaml("defender_randomization.yaml")
+        except FileNotFoundError:
+            # Return defaults if file doesn't exist
+            return cls(
+                mode_probs={"patrol": 0.5, "guard_objective": 0.3, "intercept": 0.2},
+                delay_min=0.0,
+                delay_max=0.5,
+                p_random_action=0.05,
+                aim_std=5.0,
+                patrol_jitter_enabled=True,
+                patrol_jitter_radius=10.0,
+            )
+        
+        return cls(
+            mode_probs=data.get("behavior_modes", {"patrol": 0.5, "guard_objective": 0.3, "intercept": 0.2}),
+            delay_min=data.get("reaction", {}).get("delay_min", 0.0),
+            delay_max=data.get("reaction", {}).get("delay_max", 0.5),
+            p_random_action=data.get("reaction", {}).get("p_random_action", 0.05),
+            aim_std=data.get("jitter", {}).get("aim_std", 5.0),
+            patrol_jitter_enabled=data.get("patrol_randomization", {}).get("enabled", True),
+            patrol_jitter_radius=data.get("patrol_randomization", {}).get("jitter_radius", 10.0),
+        )
+
+
+@dataclass
+class ScenarioRandomizationConfig:
+    """Scenario randomization configuration."""
+    spawn_enabled: bool
+    attacker_jitter_x: float
+    attacker_jitter_y: float
+    defender_jitter_x: float
+    defender_jitter_y: float
+    objective_enabled: bool
+    objective_jitter_x: float
+    objective_jitter_y: float
+    
+    @classmethod
+    def from_yaml(cls) -> "ScenarioRandomizationConfig":
+        try:
+            data = load_yaml("scenario_randomization.yaml")
+        except FileNotFoundError:
+            # Return defaults (no randomization) if file doesn't exist
+            return cls(
+                spawn_enabled=False,
+                attacker_jitter_x=0.0,
+                attacker_jitter_y=0.0,
+                defender_jitter_x=0.0,
+                defender_jitter_y=0.0,
+                objective_enabled=False,
+                objective_jitter_x=0.0,
+                objective_jitter_y=0.0,
+            )
+        
+        spawn = data.get("spawn_randomization", {})
+        objective = data.get("objective_randomization", {})
+        
+        return cls(
+            spawn_enabled=spawn.get("enabled", False),
+            attacker_jitter_x=spawn.get("attackers", {}).get("jitter_x", 0.0),
+            attacker_jitter_y=spawn.get("attackers", {}).get("jitter_y", 0.0),
+            defender_jitter_x=spawn.get("defenders", {}).get("jitter_x", 0.0),
+            defender_jitter_y=spawn.get("defenders", {}).get("jitter_y", 0.0),
+            objective_enabled=objective.get("enabled", False),
+            objective_jitter_x=objective.get("jitter", {}).get("x_range", 0.0),
+            objective_jitter_y=objective.get("jitter", {}).get("y_range", 0.0),
+        )
+
+
+@dataclass
 class FullConfig:
     """Complete configuration for the environment."""
     world: WorldConfig
@@ -381,6 +473,8 @@ class FullConfig:
     engagement: EngagementConfig
     reward: RewardConfig
     termination: TerminationConfig
+    defender_randomization: DefenderRandomizationConfig
+    scenario_randomization: ScenarioRandomizationConfig
     
     @classmethod
     def load(cls) -> "FullConfig":
@@ -393,4 +487,6 @@ class FullConfig:
             engagement=EngagementConfig.from_yaml(),
             reward=RewardConfig.from_yaml(),
             termination=TerminationConfig.from_yaml(),
+            defender_randomization=DefenderRandomizationConfig.from_yaml(),
+            scenario_randomization=ScenarioRandomizationConfig.from_yaml(),
         )

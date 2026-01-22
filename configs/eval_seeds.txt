@@ -1,0 +1,14 @@
+# Fixed evaluation seeds for consistent held-out evaluation
+# These seeds are used during periodic evaluation to measure generalization
+# DO NOT use these seeds during training
+
+42
+123
+777
+1337
+2024
+314159
+9999
+54321
+11111
+88888
