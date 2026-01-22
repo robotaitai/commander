@@ -179,6 +179,7 @@ class UnitTypeConfig:
     altitude_change_time: float = 1.0
     behavior: dict = field(default_factory=dict)
     initial_speed: float = 0.0  # Initial speed when spawned (0 = stationary)
+    tag_damage: Optional[float] = None  # TAG damage override (None = use global setting)
 
 
 def load_unit_types(filename: str, config_dir: Optional[Path] = None) -> dict[str, UnitTypeConfig]:
@@ -200,6 +201,7 @@ def load_unit_types(filename: str, config_dir: Optional[Path] = None) -> dict[st
             altitude_change_time=cfg.get("altitude_change_time", 1.0),
             behavior=cfg.get("behavior", {}),
             initial_speed=cfg.get("initial_speed", 0.0),
+            tag_damage=cfg.get("tag_damage", None),
         )
     return unit_types
 

@@ -42,17 +42,21 @@ class EngagementSystem:
         self.dynamics = dynamics
         self.stats = EngagementStats()
     
-    def _calculate_damage(self, distance: float) -> float:
+    def _calculate_damage(self, distance: float, base_damage: Optional[float] = None) -> float:
         """
         Calculate damage based on distance with falloff.
         
         - At or below optimal_range: full damage
         - Between optimal_range and max_range: linear falloff to min_damage
         - Beyond max_range: no damage (shouldn't happen as we check range)
+        
+        Args:
+            distance: Distance to target
+            base_damage: Base damage to use (if None, uses config default)
         """
         optimal = self.config.tag_optimal_range
         max_range = self.config.tag_range
-        full_damage = self.config.tag_damage
+        full_damage = base_damage if base_damage is not None else self.config.tag_damage
         min_damage = self.config.tag_min_damage
         
         if distance <= optimal:
@@ -144,8 +148,13 @@ class EngagementSystem:
         else:
             self.stats.tag_hits_defender += 1
         
+        # Get unit-specific tag damage if available
+        unit_tag_damage = None
+        if attacker.type_config and attacker.type_config.tag_damage is not None:
+            unit_tag_damage = attacker.type_config.tag_damage
+        
         # Calculate damage with range falloff
-        damage = self._calculate_damage(best_dist)
+        damage = self._calculate_damage(best_dist, base_damage=unit_tag_damage)
         
         # Apply damage
         old_integrity = best_target.integrity

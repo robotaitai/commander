@@ -56,7 +56,7 @@ unit_types:
     max_accel: 5.0
     max_turn_rate: 180.0
     radius: 0.5             # small - can fly over obstacles at altitude
-    initial_integrity: 60.0
+    initial_integrity: 30.0
     initial_speed: 0.0      # Start stopped (high-level controller handles speed)
     altitude_bands: 3       # 0, 1, 2
     altitude_change_time: 1.0  # seconds to change band
@@ -80,7 +80,7 @@ unit_types:
     max_accel: 6.0
     max_turn_rate: 200.0
     radius: 0.4             # smallest footprint
-    initial_integrity: 50.0
+    initial_integrity: 30.0
     initial_speed: 0.0      # Start stopped (high-level controller handles speed)
     altitude_bands: 3
     altitude_change_time: 0.8

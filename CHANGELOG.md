@@ -6,6 +6,38 @@ A chronological diary of major changes, fixes, and insights during development.
 
 ## 2026-01-22
 
+### 16:44 - Feature: Per-Unit TAG Damage Customization
+**Requirement:** User wanted different attack power for defender types:
+- DEF_UGV: 35 damage
+- DEF_UAV: 10 damage
+
+**Implementation:**
+- Added `tag_damage: Optional[float] = None` to `UnitTypeConfig`
+- Modified `EngagementSystem._calculate_damage()` to accept `base_damage` parameter
+- Updated `attempt_tag()` to check `attacker.type_config.tag_damage` and use it if set
+- If not set, falls back to global `engagement.yaml` damage setting
+
+**Configuration:**
+```yaml
+# configs/units_defenders.yaml
+DEF_UGV:
+  tag_damage: 35.0  # Heavier firepower
+  
+DEF_UAV:
+  tag_damage: 10.0  # Lighter firepower
+```
+
+**Files Modified:**
+- `mission_gym/config.py`: Added `tag_damage` field to `UnitTypeConfig` and loader
+- `mission_gym/engagement.py`: Modified damage calculation to support per-unit override
+- `configs/units_defenders.yaml`: Added `tag_damage` to both defender types
+
+**Testing:** ✅ All 77 tests passing
+
+**Impact:** Can now balance different unit types independently without changing global engagement rules
+
+---
+
 ### 15:25 - UX Improvement: Auto-append .zip to Checkpoint Paths
 **Problem:** Users had to remember to add `.zip` extension to checkpoint paths  
 **Improvement:** Automatically appends `.zip` if file not found without it  
@@ -467,4 +499,4 @@ termination:
 
 ---
 
-*Last Updated: 2026-01-22 15:25*
+*Last Updated: 2026-01-22 16:44*
