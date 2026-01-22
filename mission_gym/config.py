@@ -12,9 +12,11 @@ def get_config_dir() -> Path:
     return Path(__file__).parent.parent / "configs"
 
 
-def load_yaml(filename: str) -> dict:
+def load_yaml(filename: str, config_dir: Optional[Path] = None) -> dict:
     """Load a YAML config file from the configs directory."""
-    config_path = get_config_dir() / filename
+    if config_dir is None:
+        config_dir = get_config_dir()
+    config_path = config_dir / filename
     with open(config_path, "r") as f:
         return yaml.safe_load(f)
 
@@ -65,8 +67,8 @@ class WorldConfig:
     max_duration: float
     
     @classmethod
-    def from_yaml(cls) -> "WorldConfig":
-        data = load_yaml("world.yaml")
+    def from_yaml(cls, config_dir: Optional[Path] = None) -> "WorldConfig":
+        data = load_yaml("world.yaml", config_dir)
         obstacles = []
         for obs_data in data.get("obstacles", []):
             obstacles.append(Obstacle(
@@ -118,8 +120,8 @@ class ScenarioConfig:
     defenders: list[UnitSpawn]
     
     @classmethod
-    def from_yaml(cls) -> "ScenarioConfig":
-        data = load_yaml("scenario.yaml")
+    def from_yaml(cls, config_dir: Optional[Path] = None) -> "ScenarioConfig":
+        data = load_yaml("scenario.yaml", config_dir)
         obj_data = data["objective"]
         objective = ObjectiveConfig(
             type=obj_data["type"],
@@ -179,9 +181,9 @@ class UnitTypeConfig:
     initial_speed: float = 0.0  # Initial speed when spawned (0 = stationary)
 
 
-def load_unit_types(filename: str) -> dict[str, UnitTypeConfig]:
+def load_unit_types(filename: str, config_dir: Optional[Path] = None) -> dict[str, UnitTypeConfig]:
     """Load unit type configurations from YAML."""
-    data = load_yaml(filename)
+    data = load_yaml(filename, config_dir)
     unit_types = {}
     for name, cfg in data.get("unit_types", {}).items():
         unit_types[name] = UnitTypeConfig(
@@ -219,9 +221,9 @@ class SensorConfig:
     requires_los: bool = True
 
 
-def load_sensors() -> dict[str, SensorConfig]:
+def load_sensors(config_dir: Optional[Path] = None) -> dict[str, SensorConfig]:
     """Load sensor configurations from YAML."""
-    data = load_yaml("sensors.yaml")
+    data = load_yaml("sensors.yaml", config_dir)
     sensors = {}
     for name, cfg in data.get("sensors", {}).items():
         sensors[name] = SensorConfig(
@@ -260,8 +262,8 @@ class EngagementConfig:
     scan_cooldown: float
     
     @classmethod
-    def from_yaml(cls) -> "EngagementConfig":
-        data = load_yaml("engagement.yaml")
+    def from_yaml(cls, config_dir: Optional[Path] = None) -> "EngagementConfig":
+        data = load_yaml("engagement.yaml", config_dir)
         enable = data.get("enable", {})
         tag = data["tag_beam"]
         deg = tag["degradation"]
@@ -321,8 +323,8 @@ class RewardConfig:
     enable_detected_penalty: bool
     
     @classmethod
-    def from_yaml(cls) -> "RewardConfig":
-        data = load_yaml("reward.yaml")
+    def from_yaml(cls, config_dir: Optional[Path] = None) -> "RewardConfig":
+        data = load_yaml("reward.yaml", config_dir)
         weights = data.get("weights", {})
         enable = data.get("enable", {})
         shaping = data.get("shaping", {})
@@ -370,8 +372,8 @@ class TerminationConfig:
     early_success_capture_progress: Optional[float]
     
     @classmethod
-    def from_yaml(cls) -> "TerminationConfig":
-        data = load_yaml("world.yaml")
+    def from_yaml(cls, config_dir: Optional[Path] = None) -> "TerminationConfig":
+        data = load_yaml("world.yaml", config_dir)
         term = data.get("termination", {})
         return cls(
             stagnation_seconds=term.get("stagnation_seconds", 30.0),
@@ -392,9 +394,9 @@ class DefenderRandomizationConfig:
     patrol_jitter_radius: float
     
     @classmethod
-    def from_yaml(cls) -> "DefenderRandomizationConfig":
+    def from_yaml(cls, config_dir: Optional[Path] = None) -> "DefenderRandomizationConfig":
         try:
-            data = load_yaml("defender_randomization.yaml")
+            data = load_yaml("defender_randomization.yaml", config_dir)
         except FileNotFoundError:
             # Return defaults if file doesn't exist
             return cls(
@@ -431,9 +433,9 @@ class ScenarioRandomizationConfig:
     objective_jitter_y: float
     
     @classmethod
-    def from_yaml(cls) -> "ScenarioRandomizationConfig":
+    def from_yaml(cls, config_dir: Optional[Path] = None) -> "ScenarioRandomizationConfig":
         try:
-            data = load_yaml("scenario_randomization.yaml")
+            data = load_yaml("scenario_randomization.yaml", config_dir)
         except FileNotFoundError:
             # Return defaults (no randomization) if file doesn't exist
             return cls(
@@ -477,16 +479,16 @@ class FullConfig:
     scenario_randomization: ScenarioRandomizationConfig
     
     @classmethod
-    def load(cls) -> "FullConfig":
+    def load(cls, config_dir: Optional[Path] = None) -> "FullConfig":
         return cls(
-            world=WorldConfig.from_yaml(),
-            scenario=ScenarioConfig.from_yaml(),
-            attacker_types=load_unit_types("units_attackers.yaml"),
-            defender_types=load_unit_types("units_defenders.yaml"),
-            sensors=load_sensors(),
-            engagement=EngagementConfig.from_yaml(),
-            reward=RewardConfig.from_yaml(),
-            termination=TerminationConfig.from_yaml(),
-            defender_randomization=DefenderRandomizationConfig.from_yaml(),
-            scenario_randomization=ScenarioRandomizationConfig.from_yaml(),
+            world=WorldConfig.from_yaml(config_dir),
+            scenario=ScenarioConfig.from_yaml(config_dir),
+            attacker_types=load_unit_types("units_attackers.yaml", config_dir),
+            defender_types=load_unit_types("units_defenders.yaml", config_dir),
+            sensors=load_sensors(config_dir),
+            engagement=EngagementConfig.from_yaml(config_dir),
+            reward=RewardConfig.from_yaml(config_dir),
+            termination=TerminationConfig.from_yaml(config_dir),
+            defender_randomization=DefenderRandomizationConfig.from_yaml(config_dir),
+            scenario_randomization=ScenarioRandomizationConfig.from_yaml(config_dir),
         )

@@ -130,6 +130,12 @@ def main():
         default=5,
         help="Number of past commands to show per unit (default: 5)",
     )
+    parser.add_argument(
+        "--config-dir",
+        type=str,
+        default=None,
+        help="Path to config directory (default: infer from model path)",
+    )
     args = parser.parse_args()
     
     from mission_gym.scripts.run_utils import (
@@ -146,16 +152,61 @@ def main():
     
     model_path = find_model_path(args.model)
     print(f"  {c.colorize('📁 Model:', c.BRIGHT_BLUE)} {model_path}")
+    
+    # Infer or use provided config directory
+    if args.config_dir:
+        config_dir = Path(args.config_dir)
+    else:
+        run_dir = model_path.parent
+        config_dir = run_dir / "configs"
+    
+    if config_dir.exists():
+        print(f"  {c.colorize('⚙️  Config:', c.BRIGHT_BLUE)} {config_dir}")
+    else:
+        print(f"  {c.colorize('⚠️  Config:', c.YELLOW)} {config_dir} (not found, using defaults)")
+        config_dir = None
     print()
     
     try:
         from stable_baselines3 import PPO
         from mission_gym.env import MissionGymEnv
+        from mission_gym.config import FullConfig
     except ImportError as e:
         print_error(f"Import failed: {e}")
         return 1
     
-    print_step(1, f"Loading model")
+    print_step(1, f"Loading configuration")
+    if config_dir:
+        try:
+            config = FullConfig.load(config_dir=config_dir)
+            print_info("Configuration loaded from run directory")
+        except Exception as e:
+            print_warning(f"Failed to load config from {config_dir}: {e}")
+            print_info("Using default configuration")
+            config = None
+    else:
+        config = None
+    
+    # Print environment signature
+    if config:
+        num_attackers = len(config.scenario.attackers)
+        num_defenders = len(config.scenario.defenders)
+        capture_time = config.scenario.objective.capture_time_required
+        obj_radius = config.scenario.objective.radius
+        stagnation_sec = config.termination.stagnation_seconds
+        tag_enabled = config.engagement.tag_enabled
+        
+        print()
+        print(f"  {c.colorize('🎯 Env Signature:', c.BRIGHT_YELLOW)} "
+              f"attackers={c.colorize(str(num_attackers), c.BRIGHT_GREEN)} "
+              f"defenders={c.colorize(str(num_defenders), c.BRIGHT_CYAN)} "
+              f"capture_time={c.colorize(f'{capture_time:.0f}s', c.YELLOW)} "
+              f"obj_radius={c.colorize(f'{obj_radius:.0f}m', c.MAGENTA)} "
+              f"stagnation={c.colorize(f'{stagnation_sec:.0f}s', c.RED)} "
+              f"tag={c.colorize('ON' if tag_enabled else 'OFF', c.BRIGHT_GREEN if tag_enabled else c.DIM)}")
+    
+    print()
+    print_step(2, f"Loading model")
     try:
         model = PPO.load(str(model_path))
         print_info("Model loaded successfully")
@@ -164,9 +215,9 @@ def main():
         return 1
     
     print()
-    print_step(2, "Creating environment")
+    print_step(3, "Creating environment")
     render_mode = None if args.no_render else "human"
-    env = MissionGymEnv(render_mode=render_mode)
+    env = MissionGymEnv(render_mode=render_mode, config=config)
     print_info(f"Render mode: {'disabled' if args.no_render else 'enabled'}")
     print_info(f"Verbose mode: {'ON - showing live commands' if args.verbose else 'OFF'}")
     
