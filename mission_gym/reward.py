@@ -60,7 +60,7 @@ class RewardFunction:
         # Components multiply by config.* directly
         weight_map = {
             "capture_progress": self.config.capture_progress,
-            "win_bonus": self.config.win_bonus,
+            "win_bonus": 1.0,  # WinBonusReward already uses config.win_bonus internally
             "zone_entry": 1.0,  # Uses config.zone_entry_bonus
             "zone_time": 1.0,   # Uses config.zone_time
             "min_dist_potential": 1.0,  # Uses config.min_dist_potential
