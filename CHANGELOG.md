@@ -6,6 +6,26 @@ A chronological diary of major changes, fixes, and insights during development.
 
 ## 2026-01-22
 
+### 17:15 - UX: Reduced Logger Verbosity
+**Problem:** Training logs were too verbose:
+- Training update tables printed every single iteration (way too frequent)
+- Episode metrics printed every 10 episodes (still quite frequent)
+- Console output was cluttered and hard to scan
+
+**Solution:**
+- Changed `RichTrainingCallback.print_freq` from `1` → `100` (prints every 100 iterations)
+- Changed `MetricsCallback.print_freq` from `10` → `20` (prints every 20 episodes)
+- Progress bar still updates continuously for real-time feedback
+
+**Files Modified:**
+- `mission_gym/scripts/train_ppo.py`: Updated callback frequencies
+- `CHANGELOG.md`: Documented change (17:15)
+
+**Impact:** Much cleaner logs - ~100x fewer training update tables, ~2x fewer episode summaries ✅
+Progress bar still shows continuous progress, so no information loss
+
+---
+
 ### 17:10 - UX: Cleaned Up Training Log Output
 **Problem:** Training logs were cluttered with TensorFlow/TensorBoard errors and warnings:
 - Multiple `ImportError: cannot import name 'notf' from 'tensorboard.compat'` errors
@@ -548,4 +568,4 @@ termination:
 
 ---
 
-*Last Updated: 2026-01-22 17:10*
+*Last Updated: 2026-01-22 17:15*

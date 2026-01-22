@@ -271,10 +271,12 @@ def main():
     )
     
     # Metrics callback for TensorBoard KPIs and episode summaries
-    metrics_callback = MetricsCallback(verbose=0)
+    # Print every 20 episodes to reduce verbosity
+    metrics_callback = MetricsCallback(verbose=0, print_freq=20)
     
     # Rich training callback for beautiful console output
-    rich_training = RichTrainingCallback(print_freq=1)
+    # Print every 100 iterations to reduce verbosity (progress bar still updates continuously)
+    rich_training = RichTrainingCallback(print_freq=100)
     
     callbacks = CallbackList([html_monitor, eval_callback, checkpoint_callback, metrics_callback, rich_training])
     print_info("HTML dashboard callback configured")
