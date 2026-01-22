@@ -6,6 +6,24 @@ A chronological diary of major changes, fixes, and insights during development.
 
 ## 2026-01-22
 
+### 17:20 - Bug Fix: Unified Dashboard Shows Active Run
+**Problem:** Unified dashboard (`runs/dashboard.html`) didn't show the currently active/training run by default
+- Dashboard was sorted by directory name (creation time), not by which run is actively updating
+- If you opened the dashboard during training, it might show an old run instead of the active one
+
+**Solution:**
+1. Changed sorting to use `dashboard.html` modification time instead of directory name
+2. Most recently updated dashboard = active training run (updates every 5s during training)
+3. Updated JavaScript to default to first run (most recently updated) while still respecting manual selections
+
+**Files Modified:**
+- `mission_gym/scripts/run_utils.py`: Sort by dashboard mtime, improved JS selection logic
+- `CHANGELOG.md`: Documented fix (17:20)
+
+**Impact:** Unified dashboard now automatically shows the active training run ✅
+
+---
+
 ### 17:15 - UX: Reduced Logger Verbosity
 **Problem:** Training logs were too verbose:
 - Training update tables printed every single iteration (way too frequent)
@@ -568,4 +586,4 @@ termination:
 
 ---
 
-*Last Updated: 2026-01-22 17:15*
+*Last Updated: 2026-01-22 17:20*

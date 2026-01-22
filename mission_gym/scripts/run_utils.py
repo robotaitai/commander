@@ -677,7 +677,7 @@ def generate_unified_dashboard() -> Path:
     
     # Collect all runs with their metadata
     runs_data = []
-    for run_dir in sorted(runs_dir.iterdir(), reverse=True):  # Newest first
+    for run_dir in runs_dir.iterdir():
         if not run_dir.is_dir():
             continue
         
@@ -696,12 +696,19 @@ def generate_unified_dashboard() -> Path:
             except Exception:
                 pass
         
+        # Get dashboard modification time to find the most recently updated (active) run
+        dashboard_mtime = dashboard_file.stat().st_mtime
+        
         runs_data.append({
             "name": run_dir.name,
             "path": str(dashboard_file.relative_to(runs_dir)),
             "created": metadata.get("created_at", ""),
             "timesteps": metadata.get("args", {}).get("timesteps", 0),
+            "mtime": dashboard_mtime,  # For sorting by most recently updated
         })
+    
+    # Sort by dashboard modification time (most recently updated first = active run)
+    runs_data.sort(key=lambda x: x["mtime"], reverse=True)
     
     # Build run options HTML
     options_html = ""
@@ -880,18 +887,33 @@ def generate_unified_dashboard() -> Path:
         // This prevents scroll jumping and double-refreshes.
         
         // Store the currently selected run in localStorage
+        // Default to first run (most recently updated = active training run)
         const select = document.getElementById('run-select');
-        if (select) {{
+        if (select && select.options.length > 0) {{
             const saved = localStorage.getItem('selectedRun');
+            const defaultRun = select.options[0].value;  // Most recently updated dashboard
+            
+            // Check if saved run still exists and is valid
+            let runToLoad = defaultRun;
             if (saved) {{
+                // Check if saved run exists in options
+                let savedExists = false;
                 for (let option of select.options) {{
                     if (option.value === saved) {{
-                        select.value = saved;
-                        loadRun(saved);
+                        savedExists = true;
                         break;
                     }}
                 }}
+                // Use saved run if it exists, otherwise use default (active run)
+                if (savedExists) {{
+                    runToLoad = saved;
+                }}
             }}
+            
+            select.value = runToLoad;
+            loadRun(runToLoad);
+            
+            // Save user's manual selection
             select.addEventListener('change', function() {{
                 localStorage.setItem('selectedRun', this.value);
             }});
