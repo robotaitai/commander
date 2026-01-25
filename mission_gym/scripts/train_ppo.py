@@ -10,6 +10,10 @@ os.environ['AUTOGRAPH_VERBOSITY'] = '0'
 os.environ['TF_DISABLE_MKL'] = '1'
 os.environ['TF_DISABLE_POOL_ALLOCATOR'] = '1'
 
+# Ensure CUDA is visible (clear any stale CUDA_VISIBLE_DEVICES)
+if 'CUDA_VISIBLE_DEVICES' not in os.environ:
+    os.environ['CUDA_VISIBLE_DEVICES'] = '0'
+
 import sys
 import warnings
 from io import StringIO
@@ -337,11 +341,37 @@ def main():
     )
     print_info(f"Lineage saved to {run_dir / 'lineage.json'}")
     
+    # Detect GPU and set device
+    print()
+    print_step(7, "Detecting compute device")
+    try:
+        import torch
+        if torch.cuda.is_available():
+            device = "cuda"
+            gpu_name = torch.cuda.get_device_name(0)
+            gpu_mem = torch.cuda.get_device_properties(0).total_memory / (1024**3)
+            print_info(f"✓ GPU detected: {gpu_name} ({gpu_mem:.1f} GB)")
+            print_info(f"  CUDA version: {torch.version.cuda}")
+            print_info(f"  Using device: cuda:0")
+        else:
+            device = "cpu"
+            print_warning("⚠️  No GPU detected, using CPU (training will be slower)")
+            print_info("  Tip: Check CUDA installation with 'nvidia-smi'")
+    except Exception as e:
+        device = "cpu"
+        print_warning(f"⚠️  GPU detection failed: {e}")
+        print_info("  Falling back to CPU")
+    
     # Create PPO model with MlpPolicy (vector-only observations)
     print()
-    print_step(7, "Creating PPO model with MlpPolicy")
+    print_step(8, "Creating PPO model with MlpPolicy")
     try:
         tb_log = None if args.no_tensorboard else str(log_path)
+        
+        # Optimize batch size based on n_envs for better GPU utilization
+        # n_steps * n_envs should be divisible by batch_size
+        rollout_buffer_size = 2048 // args.n_envs * args.n_envs
+        batch_size = min(256, rollout_buffer_size // 4)  # Larger batches for GPU
         
         model = PPO(
             "MlpPolicy",
@@ -349,9 +379,10 @@ def main():
             verbose=0,  # Disabled - using RichTrainingCallback instead
             seed=args.seed,
             tensorboard_log=tb_log,
+            device=device,  # Explicit device selection
             learning_rate=3e-4,
             n_steps=2048 // args.n_envs,
-            batch_size=64,
+            batch_size=batch_size,
             n_epochs=10,
             gamma=0.99,
             gae_lambda=0.95,
@@ -363,7 +394,8 @@ def main():
                 "net_arch": [256, 256],  # Shared layers for pi and vf
             },
         )
-        print_info("PPO model created (MlpPolicy, vector-only obs)")
+        print_info(f"PPO model created (MlpPolicy, vector-only obs, device={device})")
+        print_info(f"  Rollout buffer: {rollout_buffer_size}, Batch size: {batch_size}")
     except Exception as e:
         print_error(f"Model creation failed: {e}")
         import traceback
@@ -373,10 +405,11 @@ def main():
     # Load checkpoint if specified
     if args.load_checkpoint:
         print()
-        print_step(8, f"Loading parent checkpoint")
+        print_step(9, f"Loading parent checkpoint")
         try:
-            model = PPO.load(str(args.load_checkpoint), env=envs)
+            model = PPO.load(str(args.load_checkpoint), env=envs, device=device)
             print_info(f"✓ Parent checkpoint loaded: {Path(args.load_checkpoint).name}")
+            print_info(f"  Model moved to device: {device}")
             # Extract timesteps from checkpoint name if possible
             checkpoint_name = Path(args.load_checkpoint).stem
             if "_steps" in checkpoint_name:
@@ -434,7 +467,7 @@ def main():
     
     # Save rewards history
     print()
-    print_step(7, "Saving results")
+    print_step(10, "Saving results")
     save_rewards_history(
         run_dir,
         html_monitor.episode_rewards,
