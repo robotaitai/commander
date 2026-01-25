@@ -6,6 +6,39 @@ A chronological diary of major changes, fixes, and insights during development.
 
 ## 2026-01-25
 
+### 01:15 - Documentation Fix: Correct Compatibility Rules
+**Critical Correction:** Fixed documentation that incorrectly stated adding defenders breaks compatibility
+
+**Key Discovery:**  
+The policy observation space only includes **attacker features**, NOT defender features!
+- Observation: `vec_dim = num_attackers × 10 + 2` (defenders not included)
+- Action space: Controls only attackers (defenders are AI-controlled)
+- **Result:** Adding/removing defenders does NOT break checkpoint compatibility!
+
+**Updated Documentation:**
+- `docs/WORKFLOW_GUIDE.md`: Corrected all compatibility rules
+- `CHANGELOG.md`: Fixed this entry
+
+**Correct Compatibility Rules:**
+
+✅ **Can change without breaking compatibility:**
+- Number of defenders (they're not in observation space!)
+- Defender types/behaviors
+- Reward weights
+- Unit stats (speed, damage, integrity)
+- World obstacles
+- Termination conditions
+
+❌ **Cannot change (requires training from scratch):**
+- Number of attackers (changes observation + action space)
+- Actions available to attackers
+
+**User Insight:** "wait!! why adding a defender is changing the actions??? it shoudnln be this way!"
+
+**Impact:** Can now test existing policies against different defender configurations! ✅
+
+---
+
 ### 00:45 - Workflow Enhancement: Lineage-Based Cleanup & Dashboard
 **Feature:** Created comprehensive workflow for managing training runs with lineage awareness
 
@@ -26,20 +59,11 @@ A chronological diary of major changes, fixes, and insights during development.
    - How to add defenders and start new runs
    - When you can/cannot load from checkpoints
    - Cleanup strategies and best practices
-   - Compatibility rules reference
+   - Compatibility rules reference (later corrected at 01:15)
 
 **Scenario Change:**
 - Added second DEF_UGV defender to `configs/scenario.yaml`
 - Updated from 1 to 2 defenders for increased difficulty
-
-**Key Insight:**  
-Changing the number of units breaks checkpoint compatibility (observation/action space changes).
-Must train from scratch when adding/removing units, but can continue training when only changing:
-- Reward weights
-- Unit stats (speed, damage, integrity)
-- World obstacles
-- Termination conditions
-- Defender behaviors
 
 **Files Created:**
 - `cleanup_runs.py`: Lineage-aware cleanup script

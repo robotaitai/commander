@@ -61,36 +61,44 @@ defenders:
 
 ## Step 3: Start a New Branched Training Run
 
-**IMPORTANT:** When you change the number of units, you CANNOT load from a checkpoint because the observation and action spaces will be incompatible. You must train from scratch.
+**IMPORTANT:** You can almost always resume from a checkpoint! The policy only observes **attackers** (not defenders), so:
 
-### Option A: Train from Scratch with New Scenario
+✅ **Compatible changes** (can resume training):
+- Adding/removing defenders
+- Changing defender types or behaviors
+- Modifying rewards, obstacles, termination conditions
+- Changing unit stats (speed, damage, integrity)
+
+❌ **Incompatible changes** (must train from scratch):
+- Adding/removing **attackers** (changes observation + action space)
+- Changing actions available to attackers
+
+### Option A: Continue Training with Modified Scenario (e.g., More Defenders)
+
+**Recommended!** Since defenders don't affect observation/action space, you can resume:
 
 ```bash
-python -m mission_gym.scripts.train_ppo \
-    --timesteps 50000000 \
-    --n-envs 16 \
-    --run-name "2-defenders-experiment" \
-    --notes "Added second UGV defender to increase difficulty"
-```
-
-### Option B: Continue Training (Same Scenario)
-
-If you're NOT changing the number of units, you can branch from your best checkpoint:
-
-```bash
-# Find your best checkpoint
-ls -lht runs/branch-20260122-193222/checkpoints/*.zip | head -1
-
-# Resume training from it
 python -m mission_gym.scripts.train_ppo \
     --timesteps 50000000 \
     --n-envs 16 \
     --parent-checkpoint runs/branch-20260122-193222/checkpoints/ppo_mission_27670000_steps \
-    --branch-name "continued-training" \
-    --notes "Continuing from 27.67M steps with refined rewards"
+    --branch-name "2-defenders-continued" \
+    --notes "Testing 56% win rate policy against 2 defenders (increased difficulty)"
 ```
 
-**Note:** The `.zip` extension is added automatically, don't include it!
+### Option B: Train from Scratch
+
+If you changed the number of **attackers** or their actions:
+
+```bash
+python -m mission_gym.scripts.train_ppo \
+    --timesteps 50000000 \
+    --n-envs 16 \
+    --run-name "3-attackers-experiment" \
+    --notes "Reduced to 3 attackers to test performance"
+```
+
+**Note:** The `.zip` extension is added automatically when loading checkpoints!
 
 ---
 
@@ -154,23 +162,30 @@ Every run records:
 
 ### Compatibility Rules
 
+**Key Insight:** The policy only observes and controls **attackers**. Defenders are part of the environment dynamics (like obstacles).
+
 You can load a checkpoint ONLY if:
 
-1. ✅ **Number of units is unchanged**
-   - Same number of attackers
-   - Same number of defenders
+1. ✅ **Number of attackers is unchanged**
+   - Same number of attacker units
    
 2. ✅ **Action space is unchanged**
-   - Same actions available per unit
+   - Same actions available per attacker unit
    
-3. ✅ **Observation space is unchanged**
-   - Same vector dimension
+3. ✅ **Observation features are unchanged**
+   - Same vector dimension (depends only on attacker count)
+
+**Observation Space Formula:** `vec_dim = num_attackers × 10 + 2`
+- Each attacker: 10 features (x, y, heading_cos, heading_sin, speed, integrity, tag_cd, scan_cd, altitude, disabled)
+- Global: 2 features (time_remaining, capture_progress)
+- **Defenders are NOT in the observation!**
 
 ### What You CAN Change Without Breaking Compatibility
 
+✅ **Number of defenders** in `configs/scenario.yaml` ← **Important!**  
+✅ **Defender types/behaviors** in `configs/defender_randomization.yaml`  
 ✅ **Reward weights** in `configs/reward.yaml`  
 ✅ **Unit stats** (speed, integrity, damage) in `configs/units_*.yaml`  
-✅ **Defender behavior** in `configs/defender_randomization.yaml`  
 ✅ **Scenario randomization** in `configs/scenario_randomization.yaml`  
 ✅ **Engagement mechanics** in `configs/engagement.yaml`  
 ✅ **World obstacles** in `configs/world.yaml`  
@@ -179,9 +194,10 @@ You can load a checkpoint ONLY if:
 ### What BREAKS Compatibility (Requires Training from Scratch)
 
 ❌ **Number of attackers** in `configs/scenario.yaml`  
-❌ **Number of defenders** in `configs/scenario.yaml`  
-❌ **Actions per unit** in `configs/units_*.yaml`  
-❌ **Observation features** (changing vec_dim)
+❌ **Actions per attacker unit** in `configs/units_attackers.yaml`  
+❌ **Observation features** (if you modify `_build_vector()` in `env.py`)
+
+**Note:** Changing defender count does NOT break compatibility!
 
 ---
 
@@ -265,10 +281,10 @@ If you get a compatibility error, it will tell you exactly what changed:
 
 ```
 Observation space mismatch!
-  Parent: {"type": "Box", "shape": [68]}
-  Current: {"type": "Box", "shape": [85]}
+  Parent: {"type": "Box", "shape": [42]}  # 4 attackers × 10 + 2
+  Current: {"type": "Box", "shape": [32]}  # 3 attackers × 10 + 2
 This usually means you changed:
-  - Number of units in scenario
+  - Number of attackers in scenario
 ```
 
 Start a fresh run instead of trying to force-load the incompatible checkpoint.
@@ -298,19 +314,28 @@ Make sure you:
 
 ### "Action space mismatch!" Error
 
-You changed the number of units or actions. Train from scratch:
+You changed the number of **attackers** or their available actions. Train from scratch:
 
 ```bash
 python -m mission_gym.scripts.train_ppo --timesteps 50000000 --run-name "new-scenario"
 ```
 
-### Evaluation Shows Wrong Number of Units
+**Note:** Changing the number of defenders does NOT cause this error!
 
-You're using the run's config snapshot, not your local `configs/`. Use `--config-dir` to override:
+### Evaluation Shows Wrong Number of Defenders
 
+You're using the run's config snapshot, not your local `configs/`. 
+
+**Option 1:** Use the run's original config (recommended for comparing performance):
 ```bash
 python -m mission_gym.scripts.evaluate \
-    --model runs/OLD-RUN/checkpoints/... \
+    --model runs/OLD-RUN/checkpoints/ppo_mission_XXXXX_steps
+```
+
+**Option 2:** Test with new config (e.g., more defenders):
+```bash
+python -m mission_gym.scripts.evaluate \
+    --model runs/OLD-RUN/checkpoints/ppo_mission_XXXXX_steps \
     --config-dir configs/
 ```
 

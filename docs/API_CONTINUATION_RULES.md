@@ -16,8 +16,10 @@ This document explains which configuration changes are safe for policy branching
 | **Physics parameters** | ✅ Yes | Speeds, turn rates, accelerations |
 | **Sensor configs** | ✅ Yes | Ranges, FOV, noise |
 | **Obstacle layout** | ✅ Yes | Positions, sizes |
-| **Number of units** | ❌ No | Changes obs/action space |
-| **Action list** | ❌ No | Don't add/remove actions |
+| **Number of defenders** | ✅ Yes | Defenders not in observation space! |
+| **Defender types/behaviors** | ✅ Yes | AI-controlled, not policy input |
+| **Number of attackers** | ❌ No | Changes obs + action space |
+| **Attacker action list** | ❌ No | Don't add/remove actions |
 | **Observation features** | ❌ No | Don't change vec_dim |
 
 ---
@@ -162,7 +164,7 @@ obstacles:
 
 These changes will cause the compatibility check to fail and prevent loading the checkpoint:
 
-### 1. Number of Units (`configs/scenario.yaml`)
+### 1. Number of Attackers (`configs/scenario.yaml`)
 
 **❌ BREAKING**:
 ```yaml
@@ -180,11 +182,25 @@ attackers:
     x: 40
     y: 120
   # ❌ Adding a 5th attacker breaks compatibility!
-  # Observation shape: (42,) → (52,)
+  # Observation shape: (42,) → (52,)  # vec_dim = num_attackers × 10 + 2
   # Action shape: [9,9,9,9] → [9,9,9,9,9]
 ```
 
-**Why**: Changes observation vector size and action space dimensions.
+**Why**: Changes observation vector size (includes attacker features) and action space dimensions (policy controls attackers).
+
+**✅ SAFE** - Number of defenders:
+```yaml
+defenders:
+  - type: DEF_UGV
+    x: 100
+    y: 85
+  # ✅ Adding more defenders is SAFE!
+  # Defenders are AI-controlled and NOT in observation space
+  # Observation shape: (42,) → (42,)  # unchanged!
+  # Action space: [9,9,9,9] → [9,9,9,9]  # unchanged!
+```
+
+**Why safe**: Policy observes only attackers, not defenders. Defenders are part of environment dynamics.
 
 ### 2. Action Lists (`configs/units_attackers.yaml`)
 
@@ -283,25 +299,27 @@ open runs/dashboard.html
 
 ## Compatibility Error Examples
 
-### Example 1: Added Unit (Breaking)
+### Example 1: Added Attacker (Breaking)
 
 ```bash
 $ python -m mission_gym.scripts.train_ppo \
   --parent-checkpoint runs/baseline/final_model.zip \
-  --branch-name five-units
+  --branch-name five-attackers
 
 ✗ Checkpoint incompatibility detected!
   Observation space mismatch!
-    Parent: {"type": "Box", "shape": [42], "dtype": "float32"}
-    Current: {"type": "Box", "shape": [52], "dtype": "float32"}
+    Parent: {"type": "Box", "shape": [42], "dtype": "float32"}  # 4 attackers × 10 + 2
+    Current: {"type": "Box", "shape": [52], "dtype": "float32"} # 5 attackers × 10 + 2
   This usually means you changed:
-    - Number of units in scenario
+    - Number of attackers in scenario
     - Observation features (vec_dim)
     - From Dict to Box or vice versa
 
   To fix this, either:
     1. Revert config changes to match parent checkpoint
     2. Train a new policy from scratch (remove --load-checkpoint)
+
+  Note: Adding defenders does NOT cause this error!
 ```
 
 ### Example 2: Changed Actions (Breaking)
@@ -391,8 +409,13 @@ else:
 | Episode length | ✅ | Change `max_duration` in `world.yaml` |
 | Stagnation time | ✅ | Change `stagnation_seconds` in `world.yaml` |
 | Unit speeds | ✅ | Change `max_speed` in `units_*.yaml` |
-| Add/remove units | ❌ | Requires new baseline |
+| **Number of defenders** | ✅ | Edit `scenario.yaml` defenders section |
+| **Defender behaviors** | ✅ | Edit `defender_randomization.yaml` |
+| Add/remove **attackers** | ❌ | Requires new baseline |
 | Add/remove actions | ❌ | Requires new baseline |
 | Change obs features | ❌ | Requires new baseline |
 
-**Rule of thumb**: If it changes what the policy sees or does → breaking. If it changes how rewards/physics work → safe.
+**Rule of thumb**: 
+- If it changes what the policy sees (attackers) or does → **breaking**
+- If it changes environment dynamics (defenders, rewards, physics) → **safe**
+- **Key insight**: Policy only observes attackers, not defenders!
