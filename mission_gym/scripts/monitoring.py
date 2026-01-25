@@ -1580,6 +1580,8 @@ class HTMLMonitorCallback(BaseCallback):
         
         # Try to find latest checkpoint
         latest_checkpoint = None
+        latest_checkpoint_name = None
+        latest_checkpoint_model_path = None
         if self.run_dir:
             checkpoint_dir = self.run_dir / "checkpoints"
             if checkpoint_dir.exists():
@@ -1587,19 +1589,44 @@ class HTMLMonitorCallback(BaseCallback):
                 if checkpoints:
                     # Sort by modification time, get latest
                     latest_checkpoint = max(checkpoints, key=lambda p: p.stat().st_mtime)
+                    latest_checkpoint_name = latest_checkpoint.stem  # Remove .zip
+                    # Model path is without .zip extension
+                    latest_checkpoint_model_path = str(latest_checkpoint.with_suffix(''))
                     latest_checkpoint = str(latest_checkpoint)
         
-        commands = [
+        commands = []
+        
+        # Add latest checkpoint evaluation if available
+        if latest_checkpoint_model_path:
+            # Extract step count for display
+            steps_str = latest_checkpoint_name.split('_')[-2] if latest_checkpoint_name else "unknown"
+            commands.append({
+                "name": "⚡ Eval Latest Checkpoint",
+                "desc": f"Evaluate current checkpoint ({latest_checkpoint_name})",
+                "cmd": f"python -m mission_gym.scripts.evaluate --model {latest_checkpoint_model_path} --episodes 10",
+            })
+            commands.append({
+                "name": "🎬 Video Latest Checkpoint",
+                "desc": f"Record video of latest checkpoint",
+                "cmd": f"python -m mission_gym.scripts.record_video --model {latest_checkpoint_model_path} --episodes 3",
+            })
+        
+        # Add final model commands (for completed training)
+        commands.extend([
             {
-                "name": "🎮 Evaluate Model",
-                "desc": "Test trained model with visualization",
-                "cmd": f"python -m mission_gym.scripts.evaluate --model {model_path}",
+                "name": "🎮 Eval Final Model",
+                "desc": "Evaluate final model (after training completes)",
+                "cmd": f"python -m mission_gym.scripts.evaluate --model {model_path} --episodes 10",
             },
             {
-                "name": "🎬 Record Video",
-                "desc": "Record evaluation episodes to video",
+                "name": "🎬 Video Final Model",
+                "desc": "Record video of final model (after training completes)",
                 "cmd": f"python -m mission_gym.scripts.record_video --model {model_path} --episodes 3",
             },
+        ])
+        
+        # Add other utility commands
+        commands.extend([
             {
                 "name": "🕹️ Play Manual",
                 "desc": "Control units manually with keyboard",
@@ -1625,7 +1652,7 @@ class HTMLMonitorCallback(BaseCallback):
                 "desc": "Start new training run (fresh model)",
                 "cmd": f"python -m mission_gym.scripts.train_ppo --timesteps 500000 --run-name {run_name}-continued",
             },
-        ]
+        ])
         
         commands_html = ""
         for cmd in commands:
