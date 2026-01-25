@@ -785,8 +785,46 @@ class HTMLMonitorCallback(BaseCallback):
             font-size: 0.9rem;
         }}
         
-        .reward-category {{
+        .reward-info-btn {{
             margin-left: auto;
+            background: var(--bg-dark);
+            border: 1px solid var(--border);
+            border-radius: 50%;
+            width: 20px;
+            height: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            font-size: 0.7rem;
+            color: var(--text-secondary);
+            transition: all 0.2s;
+        }}
+        
+        .reward-info-btn:hover {{
+            background: var(--accent-teal);
+            color: var(--bg-dark);
+            border-color: var(--accent-teal);
+        }}
+        
+        .reward-description {{
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height 0.3s ease-out;
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+            line-height: 1.5;
+            margin-top: 0.5rem;
+            padding: 0 0.5rem;
+            border-left: 2px solid var(--border);
+        }}
+        
+        .reward-description.expanded {{
+            max-height: 200px;
+            margin-bottom: 0.5rem;
+        }}
+        
+        .reward-category {{
             font-size: 0.7rem;
             padding: 0.15rem 0.5rem;
             border-radius: 10px;
@@ -1162,6 +1200,12 @@ class HTMLMonitorCallback(BaseCallback):
             event.target.classList.add('active');
         }}
         
+        // Toggle reward component description
+        function toggleRewardInfo(cardId) {{
+            const desc = document.getElementById(cardId);
+            desc.classList.toggle('expanded');
+        }}
+        
         // Chart
         const chartData = {json.dumps(chart_data)};
         
@@ -1318,12 +1362,21 @@ class HTMLMonitorCallback(BaseCallback):
         for comp in breakdown["components"]:
             bar_width = min(abs(comp["total"]) / max_abs_total * 100, 100)
             
+            # Prepare description (escape for HTML)
+            description = comp.get("description", "No description available.")
+            description_html = description.replace('"', '&quot;').replace("'", "&#39;")
+            card_id = f"reward-{comp['name']}"
+            
             cards_html += f'''
             <div class="reward-card">
                 <div class="reward-header">
                     <span class="reward-icon">{comp["icon"]}</span>
                     <span class="reward-name">{comp["display_name"]}</span>
+                    <button class="reward-info-btn" onclick="toggleRewardInfo('{card_id}')" title="Show explanation">ℹ️</button>
                     <span class="reward-category {comp["category"]}">{comp["category"]}</span>
+                </div>
+                <div id="{card_id}" class="reward-description">
+                    {description_html}
                 </div>
                 <div class="reward-stats">
                     <div class="reward-stat">
