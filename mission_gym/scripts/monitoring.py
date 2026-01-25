@@ -469,6 +469,9 @@ class HTMLMonitorCallback(BaseCallback):
         # Build policy continuation info panel
         continuation_html = self._build_continuation_info_html()
         
+        # Build lineage tree panel
+        lineage_html = self._build_lineage_html()
+        
         return f'''<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -704,6 +707,46 @@ class HTMLMonitorCallback(BaseCallback):
         
         .panel-body {{
             padding: 1.25rem;
+        }}
+        
+        /* Lineage Tree */
+        .lineage-tree {{
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.85rem;
+            line-height: 1.8;
+        }}
+        
+        .tree-node {{
+            margin: 0.25rem 0;
+        }}
+        
+        .tree-node.current-run {{
+            background: rgba(0, 212, 170, 0.1);
+            border-left: 3px solid var(--accent-teal);
+            padding-left: 0.5rem;
+            margin-left: -0.5rem;
+        }}
+        
+        .tree-line {{
+            color: var(--text-secondary);
+        }}
+        
+        .run-name {{
+            color: var(--text-primary);
+            font-weight: 500;
+        }}
+        
+        .run-meta {{
+            color: var(--text-secondary);
+            font-size: 0.8rem;
+            margin-left: 0.5rem;
+        }}
+        
+        .tree-notes {{
+            color: var(--accent-cyan);
+            font-size: 0.8rem;
+            margin-top: 0.25rem;
+            font-style: italic;
         }}
         
         /* Reward Components */
@@ -1098,6 +1141,9 @@ class HTMLMonitorCallback(BaseCallback):
         
         <!-- Policy Continuation Info -->
         {continuation_html}
+        
+        <!-- Policy Lineage Tree -->
+        {lineage_html}
         
         <!-- Configuration -->
         {config_html}
@@ -1864,6 +1910,84 @@ class HTMLMonitorCallback(BaseCallback):
                         </div>
                     </div>
                 </div>
+            </div>
+        </div>'''
+    
+    def _build_lineage_html(self) -> str:
+        """Build policy lineage tree panel."""
+        if not self.run_dir:
+            return ""
+        
+        # Import build_lineage_tree_html from run_utils
+        from mission_gym.scripts.run_utils import build_lineage_tree_html, get_runs_dir
+        
+        try:
+            # Collect all runs
+            runs_dir = get_runs_dir()
+            runs_data = []
+            
+            for run_dir in runs_dir.iterdir():
+                if not run_dir.is_dir():
+                    continue
+                
+                lineage_file = run_dir / "lineage.json"
+                metadata_file = run_dir / "run_metadata.json"
+                
+                if not lineage_file.exists() and not metadata_file.exists():
+                    continue
+                
+                run_info = {
+                    "name": run_dir.name,
+                    "parent": None,
+                    "created": None,
+                    "timesteps": 0,
+                    "lineage": {},
+                }
+                
+                if lineage_file.exists():
+                    try:
+                        with open(lineage_file) as f:
+                            lineage = json.load(f)
+                            run_info["parent"] = lineage.get("parent_run_name")
+                            run_info["created"] = lineage.get("created_at")
+                            run_info["lineage"] = lineage
+                    except Exception:
+                        pass
+                
+                if metadata_file.exists():
+                    try:
+                        with open(metadata_file) as f:
+                            metadata = json.load(f)
+                            run_info["timesteps"] = metadata.get("args", {}).get("timesteps", 0)
+                            if not run_info["created"]:
+                                run_info["created"] = metadata.get("created_at")
+                    except Exception:
+                        pass
+                
+                runs_data.append(run_info)
+            
+            # Generate lineage tree HTML for current run
+            lineage_tree_html = build_lineage_tree_html(runs_data, self.run_dir.name)
+            
+            return f'''
+        <div class="panel" style="margin-bottom: 2rem;">
+            <div class="panel-header">
+                <div class="panel-title"><span class="icon">🌳</span> Policy Lineage Tree</div>
+            </div>
+            <div class="panel-body">
+                <div style="font-size: 0.85rem; line-height: 1.8; font-family: 'JetBrains Mono', monospace;">
+                    {lineage_tree_html}
+                </div>
+            </div>
+        </div>'''
+        except Exception as e:
+            return f'''
+        <div class="panel" style="margin-bottom: 2rem;">
+            <div class="panel-header">
+                <div class="panel-title"><span class="icon">🌳</span> Policy Lineage Tree</div>
+            </div>
+            <div class="panel-body">
+                <p style="color: var(--text-secondary);">Unable to load lineage tree: {str(e)}</p>
             </div>
         </div>'''
     

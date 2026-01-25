@@ -94,11 +94,115 @@
             color: var(--accent-teal);
         }
         
+        .lineage-btn {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 0.5rem 1rem;
+            color: var(--text-primary);
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 0.85rem;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        
+        .lineage-btn:hover {
+            border-color: var(--accent-teal);
+            color: var(--accent-teal);
+        }
+        
+        .main-container {
+            display: flex;
+            margin-top: 60px;
+            height: calc(100vh - 60px);
+        }
+        
+        .sidebar {
+            width: 400px;
+            background: var(--bg-panel);
+            border-right: 1px solid var(--border);
+            overflow-y: auto;
+            display: none;
+        }
+        
+        .sidebar.show {
+            display: block;
+        }
+        
+        .sidebar-header {
+            padding: 1rem;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .sidebar-title {
+            font-size: 1rem;
+            font-weight: 600;
+            color: var(--accent-teal);
+        }
+        
+        .close-sidebar {
+            background: none;
+            border: none;
+            color: var(--text-secondary);
+            font-size: 1.2rem;
+            cursor: pointer;
+            padding: 0.25rem;
+        }
+        
+        .close-sidebar:hover {
+            color: var(--accent-teal);
+        }
+        
+        .sidebar-content {
+            padding: 1rem;
+        }
+        
         .dashboard-frame {
             border: none;
-            width: 100%;
-            height: calc(100vh - 60px);
-            margin-top: 60px;
+            flex: 1;
+            height: 100%;
+        }
+        
+        .lineage-tree {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.85rem;
+            line-height: 1.6;
+        }
+        
+        .tree-node {
+            margin: 0.25rem 0;
+        }
+        
+        .tree-node.current-run {
+            background: rgba(0, 212, 170, 0.1);
+            border-left: 3px solid var(--accent-teal);
+            padding-left: 0.5rem;
+            margin-left: -0.5rem;
+        }
+        
+        .tree-line {
+            color: var(--text-secondary);
+        }
+        
+        .run-name {
+            color: var(--text-primary);
+            font-weight: 500;
+        }
+        
+        .run-meta {
+            color: var(--text-secondary);
+            font-size: 0.8rem;
+            margin-left: 0.5rem;
+        }
+        
+        .tree-notes {
+            color: var(--accent-cyan);
+            font-size: 0.8rem;
+            margin-top: 0.25rem;
+            font-style: italic;
         }
         
         .no-runs {
@@ -106,8 +210,7 @@
             flex-direction: column;
             align-items: center;
             justify-content: center;
-            height: calc(100vh - 60px);
-            margin-top: 60px;
+            height: 100%;
             color: var(--text-secondary);
         }
         
@@ -135,9 +238,11 @@
             <span>MISSION GYM</span>
         </div>
         <div class="run-selector">
+            <button class="lineage-btn" onclick="toggleSidebar()">🌳 Lineage Tree</button>
             <label for="run-select">Select Run:</label>
             <select id="run-select" onchange="loadRun(this.value)">
-                <option value="final-push-20260125-002120/dashboard.html" selected>        ↳ final-push-20260125-002120 (2026-01-25 00:21:21, 22,330,000 steps)</option>
+                <option value="2-defenders-continued-20260125-171431/dashboard.html" selected>        ↳ 2-defenders-continued-20260125-171431 (2026-01-25 17:14:33, 50,000,000 steps)</option>
+<option value="final-push-20260125-002120/dashboard.html" >        ↳ final-push-20260125-002120 (2026-01-25 00:21:21, 22,330,000 steps)</option>
 <option value="branch-20260122-193222/dashboard.html" >      ↳ branch-20260122-193222 (2026-01-22 19:32:23, 50,000,000 steps)</option>
 <option value="branch-resumed-20260122-191613/dashboard.html" >    ↳ branch-resumed-20260122-191613 (2026-01-22 19:16:13, 210,000 steps)</option>
 <option value="branch-20260122-173223/dashboard.html" >  ↳ branch-20260122-173223 (2026-01-22 17:32:25, 2,500,000 steps)</option>
@@ -150,17 +255,37 @@
 <option value="zen-comet-20260122-012517/dashboard.html" >zen-comet-20260122-012517 (2026-01-22 01:25:19, 15,000,000 steps)</option>
 
             </select>
-            <span class="run-count">11 runs</span>
+            <span class="run-count">12 runs</span>
         </div>
     </header>
     
-    <iframe class='dashboard-frame' id='dashboard-frame' src='final-push-20260125-002120/dashboard.html'></iframe>
+    <div class="main-container">
+        <div class="sidebar" id="sidebar">
+            <div class="sidebar-header">
+                <span class="sidebar-title">🌳 Policy Lineage Tree</span>
+                <button class="close-sidebar" onclick="toggleSidebar()">✕</button>
+            </div>
+            <div class="sidebar-content">
+                <div class="lineage-tree"><div class="tree-node"><span class="tree-line">└── </span><span class="run-name">warm-panther-20260122-165345</span><span class="run-meta">[2026-01-22 16:53, 1.5M steps]</span></div><div class="tree-node"><span class="tree-line">    └── </span><span class="run-name">branch-20260122-173223</span><span class="run-meta">[2026-01-22 17:32, 2.5M steps]</span></div><div class="tree-node"><span class="tree-line">        └── </span><span class="run-name">branch-resumed-20260122-191613</span><span class="run-meta">[2026-01-22 19:16, 210K steps]</span></div><div class="tree-node"><span class="tree-line">            └── </span><span class="run-name">branch-20260122-193222</span><span class="run-meta">[2026-01-22 19:32, 50.0M steps]</span></div><div class="tree-node current-run"><span class="tree-line">                ├── </span><span class="run-name">2-defenders-continued-20260125-171431</span><span class="run-meta">[2026-01-25 17:14, 50.0M steps]</span><div class="tree-notes">                │      ➜ Continuing from 27.67M with 2 defenders - testing if 56% win rate policy can handle increased difficulty</div></div><div class="tree-node"><span class="tree-line">                └── </span><span class="run-name">final-push-20260125-002120</span><span class="run-meta">[2026-01-25 00:21, 22.3M steps]</span></div><div class="tree-node"><span class="tree-line">└── </span><span class="run-name">happy-spark-20260122-144715</span><span class="run-meta">[2026-01-22 14:47, 500K steps]</span></div><div class="tree-node"><span class="tree-line">└── </span><span class="run-name">lucky-nebula-20260122-115630</span><span class="run-meta">[2026-01-22 11:56, 1.5M steps]</span></div><div class="tree-node"><span class="tree-line">└── </span><span class="run-name">zen-comet-20260122-012517</span><span class="run-meta">[2026-01-22 01:25, 15.0M steps]</span></div><div class="tree-node"><span class="tree-line">    ├── </span><span class="run-name">2-defenders-20260122-152430</span><span class="run-meta">[2026-01-22 15:24, 1.0M steps]</span><div class="tree-notes">    │      ➜ Increased defender count from 1 to 2</div></div><div class="tree-node"><span class="tree-line">    ├── </span><span class="run-name">2-defenders-20260122-152451</span><span class="run-meta">[2026-01-22 15:24, 1.0M steps]</span><div class="tree-notes">    │      ➜ Increased defender count from 1 to 2</div></div><div class="tree-node"><span class="tree-line">    └── </span><span class="run-name">2-defenders-20260122-151726</span><span class="run-meta">[2026-01-22 15:17, 1.0M steps]</span><div class="tree-notes">           ➜ Increased defender count from 1 to 2</div></div></div>
+            </div>
+        </div>
+        <iframe class='dashboard-frame' id='dashboard-frame' src='2-defenders-continued-20260125-171431/dashboard.html'></iframe>
+    </div>
     
     <script>
         function loadRun(path) {
             const frame = document.getElementById('dashboard-frame');
             if (frame) {
                 frame.src = path;
+            }
+        }
+        
+        function toggleSidebar() {
+            const sidebar = document.getElementById('sidebar');
+            if (sidebar) {
+                sidebar.classList.toggle('show');
+                // Save state
+                localStorage.setItem('sidebarOpen', sidebar.classList.contains('show'));
             }
         }
         
@@ -199,6 +324,15 @@
             select.addEventListener('change', function() {
                 localStorage.setItem('selectedRun', this.value);
             });
+        }
+        
+        // Restore sidebar state
+        const sidebarOpen = localStorage.getItem('sidebarOpen');
+        if (sidebarOpen === 'true') {
+            const sidebar = document.getElementById('sidebar');
+            if (sidebar) {
+                sidebar.classList.add('show');
+            }
         }
     </script>
 </body>

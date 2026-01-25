@@ -666,6 +666,99 @@ def print_divider() -> None:
     print(c.colorize("  " + "─" * 66, c.DIM))
 
 
+def build_lineage_tree_html(runs_data: List[Dict], run_name: Optional[str] = None) -> str:
+    """
+    Build HTML for lineage tree visualization.
+    
+    Args:
+        runs_data: List of run data dictionaries
+        run_name: If provided, highlight this run in the tree
+    
+    Returns:
+        HTML string for the lineage tree
+    """
+    if not runs_data:
+        return "<p style='color: var(--text-secondary);'>No lineage data available</p>"
+    
+    # Build parent -> children mapping
+    runs_by_name = {r["name"]: r for r in runs_data}
+    children = {}
+    for run in runs_data:
+        parent = run.get("parent")
+        if parent:
+            if parent not in children:
+                children[parent] = []
+            children[parent].append(run["name"])
+    
+    # Find roots (runs with no parent or parent doesn't exist)
+    run_names = {r["name"] for r in runs_data}
+    roots = []
+    for run in runs_data:
+        parent = run.get("parent")
+        if not parent or parent not in run_names:
+            roots.append(run["name"])
+    
+    # Recursively build tree HTML
+    def build_tree_node(node_name: str, is_last: bool = True, prefix: str = "") -> str:
+        run = runs_by_name.get(node_name)
+        if not run:
+            return ""
+        
+        # Highlight current run
+        highlight_class = " current-run" if node_name == run_name else ""
+        
+        # Format metadata
+        created = run.get("created", "")
+        if created:
+            try:
+                from datetime import datetime
+                dt = datetime.fromisoformat(created.replace("Z", "+00:00"))
+                created_str = dt.strftime("%Y-%m-%d %H:%M")
+            except:
+                created_str = created[:16] if len(created) > 16 else created
+        else:
+            created_str = "unknown"
+        
+        timesteps = run.get("timesteps", 0)
+        if timesteps >= 1_000_000:
+            timesteps_str = f"{timesteps/1_000_000:.1f}M"
+        elif timesteps >= 1_000:
+            timesteps_str = f"{timesteps/1_000:.0f}K"
+        else:
+            timesteps_str = f"{timesteps}"
+        
+        # Build node
+        connector = "└── " if is_last else "├── "
+        html = f'<div class="tree-node{highlight_class}">'
+        html += f'<span class="tree-line">{prefix}{connector}</span>'
+        html += f'<span class="run-name">{node_name}</span>'
+        html += f'<span class="run-meta">[{created_str}, {timesteps_str} steps]</span>'
+        
+        # Add notes if present
+        notes = run.get("lineage", {}).get("notes")
+        if notes:
+            child_prefix = prefix + ("    " if is_last else "│   ")
+            html += f'<div class="tree-notes">{child_prefix}   ➜ {notes}</div>'
+        
+        html += '</div>'
+        
+        # Build children
+        child_names = children.get(node_name, [])
+        for i, child_name in enumerate(child_names):
+            is_last_child = (i == len(child_names) - 1)
+            child_prefix = prefix + ("    " if is_last else "│   ")
+            html += build_tree_node(child_name, is_last_child, child_prefix)
+        
+        return html
+    
+    # Build all trees
+    tree_html = ""
+    for root in roots:
+        tree_html += build_tree_node(root)
+    
+    return f'<div class="lineage-tree">{tree_html}</div>'
+
+
 def generate_unified_dashboard(lineage_filter: Optional[str] = None) -> Path:
     """
     Generate a unified dashboard HTML that allows selecting between runs.
@@ -797,6 +890,9 @@ def generate_unified_dashboard(lineage_filter: Optional[str] = None) -> Path:
     # Default to first run or empty
     default_src = runs_data[0]["path"] if runs_data else ""
     
+    # Build lineage tree HTML
+    lineage_tree_html = build_lineage_tree_html(runs_data, runs_data[0]["name"] if runs_data else None)
+    
     html = f'''<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -893,11 +989,115 @@ def generate_unified_dashboard(lineage_filter: Optional[str] = None) -> Path:
             color: var(--accent-teal);
         }}
         
+        .lineage-btn {{
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 0.5rem 1rem;
+            color: var(--text-primary);
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 0.85rem;
+            cursor: pointer;
+            transition: all 0.2s;
+        }}
+        
+        .lineage-btn:hover {{
+            border-color: var(--accent-teal);
+            color: var(--accent-teal);
+        }}
+        
+        .main-container {{
+            display: flex;
+            margin-top: 60px;
+            height: calc(100vh - 60px);
+        }}
+        
+        .sidebar {{
+            width: 400px;
+            background: var(--bg-panel);
+            border-right: 1px solid var(--border);
+            overflow-y: auto;
+            display: none;
+        }}
+        
+        .sidebar.show {{
+            display: block;
+        }}
+        
+        .sidebar-header {{
+            padding: 1rem;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }}
+        
+        .sidebar-title {{
+            font-size: 1rem;
+            font-weight: 600;
+            color: var(--accent-teal);
+        }}
+        
+        .close-sidebar {{
+            background: none;
+            border: none;
+            color: var(--text-secondary);
+            font-size: 1.2rem;
+            cursor: pointer;
+            padding: 0.25rem;
+        }}
+        
+        .close-sidebar:hover {{
+            color: var(--accent-teal);
+        }}
+        
+        .sidebar-content {{
+            padding: 1rem;
+        }}
+        
         .dashboard-frame {{
             border: none;
-            width: 100%;
-            height: calc(100vh - 60px);
-            margin-top: 60px;
+            flex: 1;
+            height: 100%;
+        }}
+        
+        .lineage-tree {{
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.85rem;
+            line-height: 1.6;
+        }}
+        
+        .tree-node {{
+            margin: 0.25rem 0;
+        }}
+        
+        .tree-node.current-run {{
+            background: rgba(0, 212, 170, 0.1);
+            border-left: 3px solid var(--accent-teal);
+            padding-left: 0.5rem;
+            margin-left: -0.5rem;
+        }}
+        
+        .tree-line {{
+            color: var(--text-secondary);
+        }}
+        
+        .run-name {{
+            color: var(--text-primary);
+            font-weight: 500;
+        }}
+        
+        .run-meta {{
+            color: var(--text-secondary);
+            font-size: 0.8rem;
+            margin-left: 0.5rem;
+        }}
+        
+        .tree-notes {{
+            color: var(--accent-cyan);
+            font-size: 0.8rem;
+            margin-top: 0.25rem;
+            font-style: italic;
         }}
         
         .no-runs {{
@@ -905,8 +1105,7 @@ def generate_unified_dashboard(lineage_filter: Optional[str] = None) -> Path:
             flex-direction: column;
             align-items: center;
             justify-content: center;
-            height: calc(100vh - 60px);
-            margin-top: 60px;
+            height: 100%;
             color: var(--text-secondary);
         }}
         
@@ -934,6 +1133,7 @@ def generate_unified_dashboard(lineage_filter: Optional[str] = None) -> Path:
             <span>MISSION GYM</span>
         </div>
         <div class="run-selector">
+            <button class="lineage-btn" onclick="toggleSidebar()">🌳 Lineage Tree</button>
             <label for="run-select">Select Run:</label>
             <select id="run-select" onchange="loadRun(this.value)">
                 {options_html}
@@ -942,19 +1142,39 @@ def generate_unified_dashboard(lineage_filter: Optional[str] = None) -> Path:
         </div>
     </header>
     
-    {f"<iframe class='dashboard-frame' id='dashboard-frame' src='{default_src}'></iframe>" if runs_data else """
-    <div class="no-runs">
-        <div class="no-runs-icon">&#128640;</div>
-        <div class="no-runs-text">No training runs found</div>
-        <div class="no-runs-hint">Start a training run with: python -m mission_gym.scripts.train_ppo</div>
+    <div class="main-container">
+        <div class="sidebar" id="sidebar">
+            <div class="sidebar-header">
+                <span class="sidebar-title">🌳 Policy Lineage Tree</span>
+                <button class="close-sidebar" onclick="toggleSidebar()">✕</button>
+            </div>
+            <div class="sidebar-content">
+                {lineage_tree_html}
+            </div>
+        </div>
+        {f"<iframe class='dashboard-frame' id='dashboard-frame' src='{default_src}'></iframe>" if runs_data else """
+        <div class="no-runs">
+            <div class="no-runs-icon">&#128640;</div>
+            <div class="no-runs-text">No training runs found</div>
+            <div class="no-runs-hint">Start a training run with: python -m mission_gym.scripts.train_ppo</div>
+        </div>
+        """}
     </div>
-    """}
     
     <script>
         function loadRun(path) {{
             const frame = document.getElementById('dashboard-frame');
             if (frame) {{
                 frame.src = path;
+            }}
+        }}
+        
+        function toggleSidebar() {{
+            const sidebar = document.getElementById('sidebar');
+            if (sidebar) {{
+                sidebar.classList.toggle('show');
+                // Save state
+                localStorage.setItem('sidebarOpen', sidebar.classList.contains('show'));
             }}
         }}
         
@@ -993,6 +1213,15 @@ def generate_unified_dashboard(lineage_filter: Optional[str] = None) -> Path:
             select.addEventListener('change', function() {{
                 localStorage.setItem('selectedRun', this.value);
             }});
+        }}
+        
+        // Restore sidebar state
+        const sidebarOpen = localStorage.getItem('sidebarOpen');
+        if (sidebarOpen === 'true') {{
+            const sidebar = document.getElementById('sidebar');
+            if (sidebar) {{
+                sidebar.classList.add('show');
+            }}
         }}
     </script>
 </body>

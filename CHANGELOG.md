@@ -6,6 +6,42 @@ A chronological diary of major changes, fixes, and insights during development.
 
 ## 2026-01-25
 
+### 01:45 - UI Enhancement: Lineage Tree Visualization in HTML Dashboards
+**Feature:** Added interactive policy lineage tree visualization to both unified and individual run dashboards
+
+**New Additions:**
+1. **Unified Dashboard** (`runs/dashboard.html`)
+   - Added "🌳 Lineage Tree" button in header
+   - Collapsible sidebar showing full lineage tree with parent-child relationships
+   - Current run highlighted in the tree
+   - Persist sidebar state in localStorage
+
+2. **Individual Run Dashboards** (`runs/RUN_NAME/dashboard.html`)
+   - New "🌳 Policy Lineage Tree" panel showing lineage for current run
+   - Displays ancestors and descendants with metadata (timestamps, steps)
+   - Shows notes from branch creation
+   - Highlights current run
+
+3. **Command Line Tool** (`show_lineage.py`)
+   - `python show_lineage.py --active`: Show active lineage tree
+   - `python show_lineage.py RUN_NAME`: Show specific run's lineage
+   - `python show_lineage.py`: Show all lineage trees
+
+**Visual Design:**
+- Tree structure with ASCII art connectors (`└──`, `├──`, `│`)
+- Color-coded elements (names, metadata, notes)
+- Monospace font for tree alignment
+- Highlight current run with teal background
+
+**User Request:** "as I ask, where can I see a tree of all the relevant policies (past policies) that my policy is coming from"
+
+**Files Modified:**
+- `mission_gym/scripts/run_utils.py`: Added `build_lineage_tree_html()` and sidebar to unified dashboard
+- `mission_gym/scripts/monitoring.py`: Added `_build_lineage_html()` and lineage tree CSS
+- Created `show_lineage.py` for command-line viewing
+
+---
+
 ### 01:15 - Documentation Fix: Correct Compatibility Rules
 **Critical Correction:** Fixed documentation that incorrectly stated adding defenders breaks compatibility
 
