@@ -4,6 +4,75 @@ A chronological diary of major changes, fixes, and insights during development.
 
 ---
 
+## 2026-01-25
+
+### 00:45 - Workflow Enhancement: Lineage-Based Cleanup & Dashboard
+**Feature:** Created comprehensive workflow for managing training runs with lineage awareness
+
+**New Tools:**
+1. **`cleanup_runs.py`** - Intelligent run cleanup script
+   - `--keep-active-lineage`: Keep most recent lineage tree, delete unrelated runs
+   - `--keep-lineage RUN_NAME`: Keep specific lineage tree
+   - `--delete-failed`: Remove runs with 0 checkpoints
+   - `--dry-run`: Preview changes without deleting
+   - `--interactive`: Prompt for each run
+
+2. **Enhanced Unified Dashboard**
+   - Shows lineage relationships with `↳` indentation
+   - Child runs indented under parents for visual hierarchy
+   - Automatically sorts by most recent activity
+
+3. **`docs/WORKFLOW_GUIDE.md`** - Complete workflow documentation
+   - How to add defenders and start new runs
+   - When you can/cannot load from checkpoints
+   - Cleanup strategies and best practices
+   - Compatibility rules reference
+
+**Scenario Change:**
+- Added second DEF_UGV defender to `configs/scenario.yaml`
+- Updated from 1 to 2 defenders for increased difficulty
+
+**Key Insight:**  
+Changing the number of units breaks checkpoint compatibility (observation/action space changes).
+Must train from scratch when adding/removing units, but can continue training when only changing:
+- Reward weights
+- Unit stats (speed, damage, integrity)
+- World obstacles
+- Termination conditions
+- Defender behaviors
+
+**Files Created:**
+- `cleanup_runs.py`: Lineage-aware cleanup script
+- `docs/WORKFLOW_GUIDE.md`: Complete training workflow guide
+
+**Files Modified:**
+- `mission_gym/scripts/run_utils.py`: Enhanced `generate_unified_dashboard()` with lineage filtering
+- `configs/scenario.yaml`: Uncommented second defender
+
+**User Request:** 
+"how do I add a defender an start a new run? all of the not related runs should be deleted and all the runs from the same 'tree' should be shown in the html"
+
+**Usage Examples:**
+```bash
+# Clean up unrelated runs (keeps active lineage tree)
+python cleanup_runs.py --keep-active-lineage
+
+# Start new training with 2 defenders (from scratch)
+python -m mission_gym.scripts.train_ppo \
+  --timesteps 50000000 \
+  --n-envs 16 \
+  --run-name "2-defenders-experiment" \
+  --notes "Added second UGV defender"
+```
+
+**Impact:**  
+✅ Clear workflow for scenario changes  
+✅ Automatic cleanup of unrelated experiments  
+✅ Visual lineage tree in dashboard  
+✅ Comprehensive documentation for team onboarding
+
+---
+
 ## 2026-01-22
 
 ### 19:20 - UX: Further Reduced Logger Verbosity

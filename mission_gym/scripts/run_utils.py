@@ -666,9 +666,14 @@ def print_divider() -> None:
     print(c.colorize("  " + "─" * 66, c.DIM))
 
 
-def generate_unified_dashboard() -> Path:
+def generate_unified_dashboard(lineage_filter: Optional[str] = None) -> Path:
     """
-    Generate a unified dashboard HTML that allows selecting between all runs.
+    Generate a unified dashboard HTML that allows selecting between runs.
+    
+    Args:
+        lineage_filter: If provided, only show runs in this lineage tree.
+                       Can be a run name (shows that run + all descendants).
+                       Use "active" to show only the most recent lineage tree.
     
     Returns the path to the generated dashboard.
     """
@@ -676,13 +681,14 @@ def generate_unified_dashboard() -> Path:
     dashboard_path = runs_dir / "dashboard.html"
     
     # Collect all runs with their metadata
-    runs_data = []
+    all_runs_data = []
     for run_dir in runs_dir.iterdir():
         if not run_dir.is_dir():
             continue
         
         dashboard_file = run_dir / "dashboard.html"
         metadata_file = run_dir / "run_metadata.json"
+        lineage_file = run_dir / "lineage.json"
         
         if not dashboard_file.exists():
             continue  # Skip runs without dashboards
@@ -696,27 +702,97 @@ def generate_unified_dashboard() -> Path:
             except Exception:
                 pass
         
+        # Load lineage if available
+        lineage = {}
+        parent_run = None
+        if lineage_file.exists():
+            try:
+                with open(lineage_file) as f:
+                    lineage = json.load(f)
+                    parent_run = lineage.get("parent_run_name")
+            except Exception:
+                pass
+        
         # Get dashboard modification time to find the most recently updated (active) run
         dashboard_mtime = dashboard_file.stat().st_mtime
         
-        runs_data.append({
+        all_runs_data.append({
             "name": run_dir.name,
             "path": str(dashboard_file.relative_to(runs_dir)),
             "created": metadata.get("created_at", ""),
             "timesteps": metadata.get("args", {}).get("timesteps", 0),
             "mtime": dashboard_mtime,  # For sorting by most recently updated
+            "parent": parent_run,
+            "lineage": lineage,
         })
     
     # Sort by dashboard modification time (most recently updated first = active run)
-    runs_data.sort(key=lambda x: x["mtime"], reverse=True)
+    all_runs_data.sort(key=lambda x: x["mtime"], reverse=True)
     
-    # Build run options HTML
+    # Apply lineage filtering
+    if lineage_filter:
+        if lineage_filter == "active":
+            # Find the most recent run and show its entire lineage tree
+            if all_runs_data:
+                root_run = all_runs_data[0]["name"]
+                # Find root of this lineage tree
+                while all_runs_data[0].get("parent"):
+                    parent = all_runs_data[0]["parent"]
+                    parent_data = next((r for r in all_runs_data if r["name"] == parent), None)
+                    if parent_data:
+                        root_run = parent
+                        all_runs_data.insert(0, all_runs_data.pop(all_runs_data.index(parent_data)))
+                    else:
+                        break
+                lineage_filter = root_run
+        
+        # Build lineage tree: include the root and all descendants
+        def is_in_lineage_tree(run_data, root_name):
+            # Check if this run is the root or descendant of root
+            current = run_data["name"]
+            visited = set()
+            while current:
+                if current == root_name:
+                    return True
+                if current in visited:  # Prevent infinite loops
+                    break
+                visited.add(current)
+                # Find parent
+                run_info = next((r for r in all_runs_data if r["name"] == current), None)
+                if not run_info:
+                    break
+                current = run_info.get("parent")
+            return False
+        
+        runs_data = [r for r in all_runs_data if is_in_lineage_tree(r, lineage_filter)]
+    else:
+        runs_data = all_runs_data
+    
+    # Build run options HTML with lineage indicators
     options_html = ""
     for i, run in enumerate(runs_data):
         selected = "selected" if i == 0 else ""
         created = run["created"][:19].replace("T", " ") if run["created"] else ""
         steps = f"{run['timesteps']:,}" if run["timesteps"] else "?"
-        options_html += f'<option value="{run["path"]}" {selected}>{run["name"]} ({created}, {steps} steps)</option>\n'
+        
+        # Add lineage indicator
+        prefix = ""
+        if run.get("parent"):
+            # Count depth in lineage tree
+            depth = 0
+            current = run["name"]
+            visited = set()
+            while current and current not in visited:
+                visited.add(current)
+                parent_data = next((r for r in runs_data if r["name"] == current), None)
+                if parent_data and parent_data.get("parent"):
+                    depth += 1
+                    current = parent_data["parent"]
+                else:
+                    break
+            prefix = "  " * depth + "↳ "
+        
+        options_html += f'<option value="{run["path"]}" {selected}>{prefix}{run["name"]} ({created}, {steps} steps)</option>\n'
     
     # Default to first run or empty
     default_src = runs_data[0]["path"] if runs_data else ""
