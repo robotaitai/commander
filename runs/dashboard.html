@@ -241,21 +241,15 @@
             <button class="lineage-btn" onclick="toggleSidebar()">🌳 Lineage Tree</button>
             <label for="run-select">Select Run:</label>
             <select id="run-select" onchange="loadRun(this.value)">
-                <option value="2-defenders-continued-20260125-171431/dashboard.html" selected>        ↳ 2-defenders-continued-20260125-171431 (2026-01-25 17:14:33, 50,000,000 steps)</option>
-<option value="final-push-20260125-002120/dashboard.html" >        ↳ final-push-20260125-002120 (2026-01-25 00:21:21, 22,330,000 steps)</option>
-<option value="branch-20260122-193222/dashboard.html" >      ↳ branch-20260122-193222 (2026-01-22 19:32:23, 50,000,000 steps)</option>
-<option value="branch-resumed-20260122-191613/dashboard.html" >    ↳ branch-resumed-20260122-191613 (2026-01-22 19:16:13, 210,000 steps)</option>
-<option value="branch-20260122-173223/dashboard.html" >  ↳ branch-20260122-173223 (2026-01-22 17:32:25, 2,500,000 steps)</option>
+                <option value="2-defenders-gpu-fast-20260125-233740/dashboard.html" selected>          ↳ 2-defenders-gpu-fast-20260125-233740 (2026-01-25 23:37:42, 50,000,000 steps)</option>
+<option value="2-defenders-continued-20260125-171431/dashboard.html" >        ↳ 2-defenders-continued-20260125-171431 (2026-01-25 17:14:33, 50,000,000 steps)</option>
 <option value="warm-panther-20260122-165345/dashboard.html" >warm-panther-20260122-165345 (2026-01-22 16:53:47, 1,500,000 steps)</option>
-<option value="2-defenders-20260122-152430/dashboard.html" >  ↳ 2-defenders-20260122-152430 (2026-01-22 15:24:32, 1,000,000 steps)</option>
-<option value="2-defenders-20260122-152451/dashboard.html" >  ↳ 2-defenders-20260122-152451 (2026-01-22 15:24:51, 1,000,000 steps)</option>
-<option value="2-defenders-20260122-151726/dashboard.html" >  ↳ 2-defenders-20260122-151726 (2026-01-22 15:17:26, 1,000,000 steps)</option>
-<option value="happy-spark-20260122-144715/dashboard.html" >happy-spark-20260122-144715 (2026-01-22 14:47:17, 500,000 steps)</option>
-<option value="lucky-nebula-20260122-115630/dashboard.html" >lucky-nebula-20260122-115630 (2026-01-22 11:56:32, 1,500,000 steps)</option>
-<option value="zen-comet-20260122-012517/dashboard.html" >zen-comet-20260122-012517 (2026-01-22 01:25:19, 15,000,000 steps)</option>
+<option value="branch-resumed-20260122-191613/dashboard.html" >    ↳ branch-resumed-20260122-191613 (2026-01-22 19:16:13, 210,000 steps)</option>
+<option value="branch-20260122-193222/dashboard.html" >      ↳ branch-20260122-193222 (2026-01-22 19:32:23, 50,000,000 steps)</option>
+<option value="branch-20260122-173223/dashboard.html" >  ↳ branch-20260122-173223 (2026-01-22 17:32:25, 2,500,000 steps)</option>
 
             </select>
-            <span class="run-count">12 runs</span>
+            <span class="run-count">6 runs</span>
         </div>
     </header>
     
@@ -266,10 +260,10 @@
                 <button class="close-sidebar" onclick="toggleSidebar()">✕</button>
             </div>
             <div class="sidebar-content">
-                <div class="lineage-tree"><div class="tree-node"><span class="tree-line">└── </span><span class="run-name">warm-panther-20260122-165345</span><span class="run-meta">[2026-01-22 16:53, 1.5M steps]</span></div><div class="tree-node"><span class="tree-line">    └── </span><span class="run-name">branch-20260122-173223</span><span class="run-meta">[2026-01-22 17:32, 2.5M steps]</span></div><div class="tree-node"><span class="tree-line">        └── </span><span class="run-name">branch-resumed-20260122-191613</span><span class="run-meta">[2026-01-22 19:16, 210K steps]</span></div><div class="tree-node"><span class="tree-line">            └── </span><span class="run-name">branch-20260122-193222</span><span class="run-meta">[2026-01-22 19:32, 50.0M steps]</span></div><div class="tree-node current-run"><span class="tree-line">                ├── </span><span class="run-name">2-defenders-continued-20260125-171431</span><span class="run-meta">[2026-01-25 17:14, 50.0M steps]</span><div class="tree-notes">                │      ➜ Continuing from 27.67M with 2 defenders - testing if 56% win rate policy can handle increased difficulty</div></div><div class="tree-node"><span class="tree-line">                └── </span><span class="run-name">final-push-20260125-002120</span><span class="run-meta">[2026-01-25 00:21, 22.3M steps]</span></div><div class="tree-node"><span class="tree-line">└── </span><span class="run-name">happy-spark-20260122-144715</span><span class="run-meta">[2026-01-22 14:47, 500K steps]</span></div><div class="tree-node"><span class="tree-line">└── </span><span class="run-name">lucky-nebula-20260122-115630</span><span class="run-meta">[2026-01-22 11:56, 1.5M steps]</span></div><div class="tree-node"><span class="tree-line">└── </span><span class="run-name">zen-comet-20260122-012517</span><span class="run-meta">[2026-01-22 01:25, 15.0M steps]</span></div><div class="tree-node"><span class="tree-line">    ├── </span><span class="run-name">2-defenders-20260122-152430</span><span class="run-meta">[2026-01-22 15:24, 1.0M steps]</span><div class="tree-notes">    │      ➜ Increased defender count from 1 to 2</div></div><div class="tree-node"><span class="tree-line">    ├── </span><span class="run-name">2-defenders-20260122-152451</span><span class="run-meta">[2026-01-22 15:24, 1.0M steps]</span><div class="tree-notes">    │      ➜ Increased defender count from 1 to 2</div></div><div class="tree-node"><span class="tree-line">    └── </span><span class="run-name">2-defenders-20260122-151726</span><span class="run-meta">[2026-01-22 15:17, 1.0M steps]</span><div class="tree-notes">           ➜ Increased defender count from 1 to 2</div></div></div>
+                <div class="lineage-tree"><div class="tree-node"><span class="tree-line">└── </span><span class="run-name">warm-panther-20260122-165345</span><span class="run-meta">[2026-01-22 16:53, 1.5M steps]</span></div><div class="tree-node"><span class="tree-line">    └── </span><span class="run-name">branch-20260122-173223</span><span class="run-meta">[2026-01-22 17:32, 2.5M steps]</span></div><div class="tree-node"><span class="tree-line">        └── </span><span class="run-name">branch-resumed-20260122-191613</span><span class="run-meta">[2026-01-22 19:16, 210K steps]</span></div><div class="tree-node"><span class="tree-line">            └── </span><span class="run-name">branch-20260122-193222</span><span class="run-meta">[2026-01-22 19:32, 50.0M steps]</span></div><div class="tree-node"><span class="tree-line">                └── </span><span class="run-name">2-defenders-continued-20260125-171431</span><span class="run-meta">[2026-01-25 17:14, 50.0M steps]</span><div class="tree-notes">                       ➜ Continuing from 27.67M with 2 defenders - testing if 56% win rate policy can handle increased difficulty</div></div><div class="tree-node current-run"><span class="tree-line">                    └── </span><span class="run-name">2-defenders-gpu-fast-20260125-233740</span><span class="run-meta">[2026-01-25 23:37, 50.0M steps]</span><div class="tree-notes">                           ➜ GPU max: 64 envs, batch_size=512</div></div></div>
             </div>
         </div>
-        <iframe class='dashboard-frame' id='dashboard-frame' src='2-defenders-continued-20260125-171431/dashboard.html'></iframe>
+        <iframe class='dashboard-frame' id='dashboard-frame' src='2-defenders-gpu-fast-20260125-233740/dashboard.html'></iframe>
     </div>
     
     <script>

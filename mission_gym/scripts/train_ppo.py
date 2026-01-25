@@ -112,6 +112,18 @@ def main():
         default=None,
         help="Notes about this training run (saved in lineage.json)",
     )
+    parser.add_argument(
+        "--network-arch",
+        type=str,
+        default="256,256",
+        help="Neural network architecture as comma-separated layer sizes (e.g., '512,512,256' for larger network). Default: '256,256'",
+    )
+    parser.add_argument(
+        "--n-epochs",
+        type=int,
+        default=10,
+        help="Number of epochs for each policy update (more epochs = more GPU work per rollout). Default: 10",
+    )
     args = parser.parse_args()
     
     # Handle parent-checkpoint alias
@@ -371,7 +383,12 @@ def main():
         # Optimize batch size based on n_envs for better GPU utilization
         # n_steps * n_envs should be divisible by batch_size
         rollout_buffer_size = 2048 // args.n_envs * args.n_envs
-        batch_size = min(256, rollout_buffer_size // 4)  # Larger batches for GPU
+        batch_size = rollout_buffer_size // 4  # Use 1/4 of buffer for optimal GPU batching
+        # Round to multiple of 64 for GPU efficiency
+        batch_size = max(64, ((batch_size + 63) // 64) * 64)
+        
+        # Parse network architecture from command line
+        net_arch = [int(x.strip()) for x in args.network_arch.split(',')]
         
         model = PPO(
             "MlpPolicy",
@@ -383,7 +400,7 @@ def main():
             learning_rate=3e-4,
             n_steps=2048 // args.n_envs,
             batch_size=batch_size,
-            n_epochs=10,
+            n_epochs=args.n_epochs,
             gamma=0.99,
             gae_lambda=0.95,
             clip_range=0.2,
@@ -391,10 +408,11 @@ def main():
             vf_coef=0.5,
             max_grad_norm=0.5,
             policy_kwargs={
-                "net_arch": [256, 256],  # Shared layers for pi and vf
+                "net_arch": net_arch,  # Use command-line specified architecture
             },
         )
         print_info(f"PPO model created (MlpPolicy, vector-only obs, device={device})")
+        print_info(f"  Network architecture: {net_arch}, n_epochs: {args.n_epochs}")
         print_info(f"  Rollout buffer: {rollout_buffer_size}, Batch size: {batch_size}")
     except Exception as e:
         print_error(f"Model creation failed: {e}")

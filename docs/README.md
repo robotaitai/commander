@@ -4,9 +4,11 @@ Mission Gym is a game-like reinforcement learning environment for commanding a f
 
 ## 📚 Documentation Index
 
+- **[GPU Training Guide](GPU_TRAINING_GUIDE.md)** - 🚀 **TRAINING REFERENCE** - Complete GPU training configurations, performance tiers, and reward system documentation
 - **[API & Continuation Rules](API_CONTINUATION_RULES.md)** - **START HERE** - Safe vs breaking config changes for policy branching
 - **[Observations and Actions](OBSERVATIONS_AND_ACTIONS.md)** - Complete API reference for observation space and action space
 - **[Policy Branching Guide](BRANCHING_GUIDE.md)** - Complete guide to policy branching, lineage tracking, and compatibility
+- **[Workflow Guide](WORKFLOW_GUIDE.md)** - Development workflow and best practices
 - **[Instructions](Insructions.md)** - Original project specifications and requirements
 - **[Scenario View](scenario_view.png)** - Visual reference for the default scenario
 
@@ -37,13 +39,17 @@ python -m mission_gym.scripts.play_manual
 # Basic training (100k timesteps, 4 parallel envs)
 python -m mission_gym.scripts.train_ppo --timesteps 100000
 
-# Advanced training (more envs, custom name)
+# GPU-accelerated training (recommended for faster training)
 python -m mission_gym.scripts.train_ppo \
-  --timesteps 500000 \
-  --n-envs 16 \
+  --timesteps 10000000 \
+  --n-envs 32 \
   --subproc \
+  --network-arch "512,512,256" \
+  --n-epochs 20 \
   --run-name my-experiment
 ```
+
+**💡 For detailed GPU configurations and performance tiers, see [GPU Training Guide](GPU_TRAINING_GUIDE.md)**
 
 ### Resume Training from Checkpoint
 
@@ -222,8 +228,14 @@ All game parameters are configurable via YAML files in `configs/`:
 
 - **Physics Rate**: 20 Hz (internal simulation)
 - **Command Rate**: 4 Hz (agent actions every 5 physics steps)
-- **Training Speed**: ~90 FPS on RTX 4070 (16 parallel envs)
+- **Training Speed**: 
+  - CPU: ~180 FPS (16 parallel envs)
+  - GPU Balanced: ~500 FPS (32 envs, 512×512×256 network)
+  - GPU Maximum: ~650 FPS (64 envs, optimized batching)
 - **Episode Length**: 1200 steps = 300 seconds = 5 minutes
+- **GPU Support**: Full CUDA acceleration for policy network training
+
+**See [GPU Training Guide](GPU_TRAINING_GUIDE.md) for optimization details**
 
 ## 🔬 Metrics Tracked
 

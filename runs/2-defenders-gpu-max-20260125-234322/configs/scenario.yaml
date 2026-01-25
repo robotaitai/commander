@@ -7,7 +7,7 @@ objective:
   x: 100.0
   y: 100.0
   radius: 15.0
-  capture_time_required: 5.0  # seconds cumulative presence to win
+  capture_time_required: 15.0  # seconds cumulative presence to win
 
 # Attacker spawn configuration
 attackers:
