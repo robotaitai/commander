@@ -346,8 +346,8 @@ def main():
     )
     
     # Metrics callback for TensorBoard KPIs and episode summaries
-    # Print every 100 episodes to reduce verbosity
-    metrics_callback = MetricsCallback(verbose=0, print_freq=100)
+    # Print every 500 episodes to reduce verbosity (less spam)
+    metrics_callback = MetricsCallback(verbose=0, print_freq=500)
     
     # Rich training callback for beautiful console output
     # Print every 500 iterations to reduce verbosity (progress bar still updates continuously)

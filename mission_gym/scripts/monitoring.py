@@ -2512,11 +2512,13 @@ class MetricsCallback(BaseCallback):
             if len(self.recent_metrics) > 100:
                 self.recent_metrics = self.recent_metrics[-100:]
             
-            # Track episode reward (from Stable-Baselines3 episode info)
-            episode_reward = info.get("episode", {}).get("r", 0.0)
-            self.recent_rewards.append(episode_reward)
-            if len(self.recent_rewards) > 100:
-                self.recent_rewards = self.recent_rewards[-100:]
+            # Track episode reward from VecEnv Monitor wrapper
+            # The "episode" key is added by VecEnv when an episode completes
+            if "episode" in info:
+                episode_reward = info["episode"]["r"]
+                self.recent_rewards.append(episode_reward)
+                if len(self.recent_rewards) > 100:
+                    self.recent_rewards = self.recent_rewards[-100:]
             
             # Print summary every N episodes
             if self.episode_count - self.last_print_episode >= self.print_freq:
