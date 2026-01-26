@@ -1693,19 +1693,41 @@ class HTMLMonitorCallback(BaseCallback):
             {
                 "name": "📋 List Checkpoints",
                 "desc": "Show saved model checkpoints",
-                "cmd": f"ls -la {checkpoint_path}",
-            },
-            {
-                "name": "🔄 Resume Training",
-                "desc": "Resume training from latest checkpoint" + (f" ({Path(latest_checkpoint).name})" if latest_checkpoint else " (no checkpoints found)"),
-                "cmd": f"python -m mission_gym.scripts.train_ppo --timesteps 500000 --load-checkpoint {latest_checkpoint}" if latest_checkpoint else f"python -m mission_gym.scripts.train_ppo --timesteps 500000 --load-checkpoint {checkpoint_path}/ppo_mission_XXXXX_steps.zip",
-            },
-            {
-                "name": "🚀 Continue Training",
-                "desc": "Start new training run (fresh model)",
-                "cmd": f"python -m mission_gym.scripts.train_ppo --timesteps 500000 --run-name {run_name}-continued",
+                "cmd": f"ls -lht {checkpoint_path} | head -20",
             },
         ])
+        
+        # Add resume command if we have a checkpoint and can read metadata
+        if latest_checkpoint_model_path and self.run_dir:
+            metadata_file = self.run_dir / "run_metadata.json"
+            resume_cmd = f"python -m mission_gym.scripts.train_ppo --timesteps 500000 --load-checkpoint {latest_checkpoint_model_path}"
+            
+            # Try to read training config to provide accurate resume command
+            if metadata_file.exists():
+                try:
+                    import json
+                    with open(metadata_file) as f:
+                        metadata = json.load(f)
+                    
+                    n_envs = metadata.get('n_envs', 64)
+                    network_arch = metadata.get('network_arch', '1024,512,512,256')
+                    n_epochs = metadata.get('n_epochs', 30)
+                    
+                    resume_cmd = f"python -m mission_gym.scripts.train_ppo --timesteps 50000000 --n-envs {n_envs} --subproc --network-arch '{network_arch}' --n-epochs {n_epochs} --load-checkpoint {latest_checkpoint_model_path} --notes 'Resumed from {latest_checkpoint_name}'"
+                except:
+                    pass
+            
+            commands.append({
+                "name": "🔄 Resume Training",
+                "desc": f"Resume from latest checkpoint ({latest_checkpoint_name})",
+                "cmd": resume_cmd,
+            })
+        
+        commands.append({
+            "name": "🌿 Branch Training",
+            "desc": "Start new branch from latest checkpoint",
+            "cmd": f"python -m mission_gym.scripts.train_ppo --timesteps 50000000 --n-envs 32 --subproc --parent-checkpoint {latest_checkpoint_model_path if latest_checkpoint_model_path else checkpoint_path + '/ppo_mission_XXXXX_steps'} --branch-name {run_name}-experiment --notes 'New experiment branch'",
+        })
         
         commands_html = ""
         for cmd in commands:
