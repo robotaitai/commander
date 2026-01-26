@@ -428,6 +428,11 @@ comander/
 
 ```bash
 pytest tests/ -v
+
+# Run specific test modules
+pytest tests/test_training_fixes.py -v    # Training system fixes (batch size, n_steps, etc)
+pytest tests/test_env.py -v               # Environment tests
+pytest tests/test_dynamics.py -v          # Physics tests
 ```
 
 ### Run with Coverage

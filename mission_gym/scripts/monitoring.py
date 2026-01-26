@@ -2355,8 +2355,9 @@ class MetricsCallback(BaseCallback):
         self.wins = 0
         self.print_freq = print_freq
         self.recent_metrics: List[Dict] = []
+        self.recent_rewards: List[float] = []  # Track episode rewards
         self.last_print_episode = 0
-        self.console = Console() if RICH_AVAILABLE else None
+        self.console = None  # Don't create own console - use print() to avoid conflicts with progress bar
     
     def _print_metrics_summary(self) -> None:
         """Print a beautiful summary of recent metrics using Rich."""
@@ -2364,6 +2365,7 @@ class MetricsCallback(BaseCallback):
             return
         
         recent = self.recent_metrics[-self.print_freq:]
+        recent_rewards = self.recent_rewards[-self.print_freq:]
         
         # Calculate aggregates
         wins = sum(1 for m in recent if m.get("win", False))
@@ -2376,6 +2378,7 @@ class MetricsCallback(BaseCallback):
         total_collisions = sum(m.get("collisions_total", 0) for m in recent)
         avg_tag_rate = sum(m.get("tag_hit_rate_attacker", 0) for m in recent) / len(recent) * 100
         avg_steps = sum(m.get("episode_steps", 0) for m in recent) / len(recent)
+        avg_reward = sum(recent_rewards) / len(recent_rewards) if recent_rewards else 0.0
         
         # Termination reasons
         reasons = {"captured": 0, "timeout": 0, "all_disabled": 0}
@@ -2383,20 +2386,20 @@ class MetricsCallback(BaseCallback):
             r = m.get("terminated_reason", "unknown")
             reasons[r] = reasons.get(r, 0) + 1
         
-        if RICH_AVAILABLE and self.console:
+        if RICH_AVAILABLE:
             self._print_rich_summary(
                 recent, wins, win_rate, overall_win_rate, avg_capture, avg_zone_time,
-                avg_distance, avg_detected, total_collisions, avg_tag_rate, avg_steps, reasons
+                avg_distance, avg_detected, total_collisions, avg_tag_rate, avg_steps, avg_reward, reasons
             )
         else:
             self._print_simple_summary(
                 recent, wins, win_rate, avg_capture, avg_distance, avg_detected, 
-                total_collisions, reasons
+                total_collisions, avg_reward, reasons
             )
     
     def _print_rich_summary(
         self, recent, wins, win_rate, overall_win_rate, avg_capture, avg_zone_time,
-        avg_distance, avg_detected, total_collisions, avg_tag_rate, avg_steps, reasons
+        avg_distance, avg_detected, total_collisions, avg_tag_rate, avg_steps, avg_reward, reasons
     ) -> None:
         """Print beautiful Rich-formatted summary."""
         # Win rate color
@@ -2406,6 +2409,14 @@ class MetricsCallback(BaseCallback):
             wr_style = "bold yellow"
         else:
             wr_style = "bold red"
+        
+        # Reward color
+        if avg_reward > 50:
+            reward_style = "bold green"
+        elif avg_reward > -50:
+            reward_style = "yellow"
+        else:
+            reward_style = "red"
         
         # Create main metrics table
         table = Table(
@@ -2419,11 +2430,11 @@ class MetricsCallback(BaseCallback):
         
         # KPI section
         table.add_column("🎯 KPI", style="bold", width=14)
-        table.add_column("Value", justify="right", width=10)
+        table.add_column("Value", justify="right", width=12)
         table.add_column("🚀 Fleet", style="bold", width=14)
-        table.add_column("Value", justify="right", width=10)
+        table.add_column("Value", justify="right", width=12)
         table.add_column("⚔️ Combat", style="bold", width=14)
-        table.add_column("Value", justify="right", width=10)
+        table.add_column("Value", justify="right", width=12)
         
         # Outcome string
         outcome_parts = []
@@ -2454,15 +2465,19 @@ class MetricsCallback(BaseCallback):
         table.add_row(
             "Steps/Ep", f"[dim]{avg_steps:.0f}[/]",
             "", "",
-            "", "",
+            "Mean Reward", f"[{reward_style}]{avg_reward:+.1f}[/]",
         )
         
-        self.console.print()
-        self.console.print(table)
+        # Use a temporary Console instance to print the table without interfering with progress bar
+        # Don't store it as self.console to avoid conflicts
+        from rich.console import Console
+        temp_console = Console()
+        temp_console.print()
+        temp_console.print(table)
     
     def _print_simple_summary(
         self, recent, wins, win_rate, avg_capture, avg_distance, avg_detected, 
-        total_collisions, reasons
+        total_collisions, avg_reward, reasons
     ) -> None:
         """Fallback simple summary without Rich."""
         print()
@@ -2470,12 +2485,13 @@ class MetricsCallback(BaseCallback):
         print(f"  📊 METRICS (Episodes {self.episode_count - len(recent) + 1}-{self.episode_count})")
         print(f"  {'─' * 60}")
         print(f"    Win Rate: {win_rate:5.1f}% ({wins}/{len(recent)})  │  Overall: {self.wins}/{self.episode_count}")
-        print(f"    Capture:  {avg_capture:5.1f}s   │  Distance: {avg_distance:6.0f}m  │  Detected: {avg_detected:4.0f}%")
+        print(f"    Mean Reward: {avg_reward:+7.1f}  │  Capture: {avg_capture:5.1f}s")
+        print(f"    Distance: {avg_distance:6.0f}m  │  Detected: {avg_detected:4.0f}%  │  Collisions: {total_collisions}")
         outcome_parts = []
         for r, count in reasons.items():
             if count > 0:
                 outcome_parts.append(f"{r}:{count}")
-        print(f"    Outcomes: {' '.join(outcome_parts)}  │  Collisions: {total_collisions}")
+        print(f"    Outcomes: {' '.join(outcome_parts)}")
         print(f"  {'─' * 60}")
     
     def _on_step(self) -> bool:
@@ -2495,6 +2511,12 @@ class MetricsCallback(BaseCallback):
             self.recent_metrics.append(metrics)
             if len(self.recent_metrics) > 100:
                 self.recent_metrics = self.recent_metrics[-100:]
+            
+            # Track episode reward (from Stable-Baselines3 episode info)
+            episode_reward = info.get("episode", {}).get("r", 0.0)
+            self.recent_rewards.append(episode_reward)
+            if len(self.recent_rewards) > 100:
+                self.recent_rewards = self.recent_rewards[-100:]
             
             # Print summary every N episodes
             if self.episode_count - self.last_print_episode >= self.print_freq:

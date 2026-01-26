@@ -1,0 +1,63 @@
+# Reward function configuration
+# ============================================================================
+# TUNED FOR LEARNING: Rewards scaled so "go to objective" beats "avoid center"
+# ============================================================================
+
+weights:
+  # ============================================================================
+  # OBJECTIVE REWARDS (make winning attractive!)
+  # ============================================================================
+  capture_progress: 2.0         # per second of capture progress
+  win_bonus: 200.0              # on successful capture (big!)
+  zone_entry_bonus: 20.0        # one-time bonus for entering zone
+  zone_time: 2.0                # reward per second in zone
+  
+  # ============================================================================
+  # SHAPING REWARDS (guide agent toward objective)
+  # ============================================================================
+  min_dist_potential: 0.5       # per meter closer to objective (strong!)
+  ring_bonus: 5.0               # per ring milestone crossed (80m, 60m, 40m, 25m, 15m)
+  approach_objective: 0.0       # DISABLED - using min_dist_potential instead
+  spread_formation: 0.005       # small reward for staying spread
+  
+  # ============================================================================
+  # ENGAGEMENT BONUSES (small rewards for combat success, mission-aligned)
+  # ============================================================================
+  tag_hit_bonus: 0.2            # per successful tag hit (only within 60m of objective)
+  defender_disabled_bonus: 10.0 # per defender disabled (only within 60m of objective)
+  
+  # ============================================================================
+  # PENALTIES (keep small so they don't dominate early learning)
+  # ============================================================================
+  time_penalty: -0.001          # -1.2 per episode (was -12, way too high!)
+  collision_penalty: -0.5       # per collision (reduced from -5)
+  integrity_loss_penalty: -0.1  # per point of integrity (reduced from -0.5)
+  unit_disabled_penalty: -20.0  # when a unit dies
+  detected_time_penalty: -0.05  # per step while detected (reduced)
+
+# Ring distances for milestone bonuses (meters from objective center)
+ring_distances: [80, 60, 40, 25, 15]
+
+# Toggle optional reward components
+enable:
+  detected_time_penalty: true
+  min_dist_potential: true
+  ring_bonus: true
+  zone_entry: true
+  zone_time: true
+
+# ============================================================================
+# OUTCOME PENALTIES (terminal rewards based on episode outcome)
+# ============================================================================
+outcome_penalties:
+  stalled: -50.0        # Episode truncated due to stagnation (no progress)
+  timeout: -20.0        # Episode truncated due to time limit
+  all_disabled: -100.0  # All attackers disabled
+
+# ============================================================================
+# EXPECTED REWARD RANGES:
+# - Losing episode (stalled): ~-50 to -70
+# - Losing episode (timeout, partial progress): ~-20 to +10
+# - Partial progress (got close): ~0 to +30  
+# - Winning episode: ~+100 to +250
+# ============================================================================

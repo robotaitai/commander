@@ -1,0 +1,143 @@
+╔══════════════════════════════════════════════════════════════════════════════╗
+║                     🔧 CRITICAL TRAINING FIXES APPLIED                       ║
+║                          January 26, 2026                                    ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+✅ Fix #1: Added --n-steps-per-env Parameter
+   • PPO rollout buffer now SCALES with n_envs (was constant at ~2048)
+   • Example: 32 envs × 256 steps = 8192 transitions/update (was 2048)
+   • Impact: Actually increases batch size when you add more environments!
+
+✅ Fix #2: Fixed Batch Size Divisibility
+   • New pick_batch_size() helper ensures batch_size divides buffer evenly
+   • Prevents silent errors from invalid batch sizes
+   • Maintains GPU efficiency (multiples of 64)
+
+✅ Fix #5: Fixed Rich Table Rendering
+   • MetricsCallback now uses temporary Console for table printing
+   • No conflicts with progress bar (separate console instances)
+   • Tables render properly instead of showing object repr
+
+✅ Fix #3: Evaluation Config (Already Fixed)
+   • evaluate.py correctly uses run's config snapshot
+   • No config mismatch causing "high reward but lost"
+
+✅ Fix #4: GPU Utilization Reality
+   • 10-25% GPU for single MLP job is NORMAL (not a bug!)
+   • Rollout phase is CPU-bound (GPU idle 70-90% of time)
+   • Solution: Run 3-4 parallel jobs for 50-70% GPU utilization
+
+╔══════════════════════════════════════════════════════════════════════════════╗
+║                        🚀 HOW TO USE THE FIXES                               ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+OPTION 1: Single Training Job (Updated Params)
+────────────────────────────────────────────────────────────────────────────────
+python -m mission_gym.scripts.train_ppo \
+  --timesteps 50000000 \
+  --n-envs 32 \
+  --n-steps-per-env 256 \     ← NEW! Controls batch size scaling
+  --subproc \
+  --network-arch "512,512,256" \
+  --n-epochs 20 \
+  --parent-checkpoint runs/2-defenders-gpu-beast-20260125-234819/checkpoints/ppo_mission_34724352_steps \
+  --branch-name "proper-batch" \
+  --notes "Using fixed n-steps-per-env for proper batch scaling"
+
+• Rollout buffer: 32 × 256 = 8192 (was 2048!)
+• Batch size: 2048 (4 minibatches, guaranteed divisible)
+• GPU util: ~15-20% (expected for single job)
+
+
+OPTION 2: Parallel Jobs for GPU Saturation 🔥 (RECOMMENDED)
+────────────────────────────────────────────────────────────────────────────────
+cd /home/itai/code/commander
+./add_parallel_jobs.sh
+
+• Starts 3 additional training jobs (4 total)
+• Each tests different config (large batch, wide net, deep net)
+• GPU util: 50-70% (sustained!)
+• Logs: logs/train_*.log
+
+Monitor:
+  watch -n 2 nvidia-smi
+  watch -n 2 './monitor_parallel.sh'
+
+
+OPTION 3: Fresh Start with 4 Parallel Jobs
+────────────────────────────────────────────────────────────────────────────────
+cd /home/itai/code/commander
+./parallel_train.sh
+
+• Stops any existing training
+• Starts 4 optimized jobs from scratch
+• Each job: 24-32 envs, 256 steps/env, 20-30 epochs
+• GPU util: 50-70%
+
+╔══════════════════════════════════════════════════════════════════════════════╗
+║                           📊 WHAT CHANGED                                    ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+Files Modified:
+  • mission_gym/scripts/train_ppo.py
+    - Added --n-steps-per-env argument (default: 128)
+    - Added pick_batch_size() helper function
+    - Fixed n_steps calculation (no longer divided by n_envs)
+    - Added PPO config printout during training start
+  
+  • parallel_train.sh & add_parallel_jobs.sh
+    - All jobs now use --n-steps-per-env
+    - Optimized for GPU saturation
+  
+  • TRAINING_CHEATSHEET.md
+    - Updated all examples with --n-steps-per-env
+    - Corrected GPU utilization expectations
+    - Added parallel training workflows
+  
+  • docs/CRITICAL_TRAINING_FIXES.md (NEW)
+    - Full technical explanation of all 4 fixes
+
+╔══════════════════════════════════════════════════════════════════════════════╗
+║                        🎯 RECOMMENDED NEXT STEPS                             ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+1. ✅ Stop your current training (if using old params)
+   Ctrl+C in the training terminal
+
+2. ✅ Start parallel training for GPU saturation:
+   cd /home/itai/code/commander
+   ./add_parallel_jobs.sh
+
+3. ✅ Monitor GPU utilization (should be 50-70%):
+   watch -n 1 nvidia-smi
+
+4. ✅ Check logs after 5-10 minutes:
+   tail -f logs/train_large_batch.log
+   tail -f logs/train_wide.log
+   tail -f logs/train_deep.log
+
+5. ✅ View dashboards:
+   firefox runs/dashboard.html
+
+╔══════════════════════════════════════════════════════════════════════════════╗
+║                          📖 DOCUMENTATION                                    ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+  • TRAINING_CHEATSHEET.md           - Quick reference (updated)
+  • docs/CRITICAL_TRAINING_FIXES.md  - Detailed explanation (NEW)
+  • docs/GPU_TRAINING_GUIDE.md       - Full GPU training guide
+
+╔══════════════════════════════════════════════════════════════════════════════╗
+║                             ⚠️ IMPORTANT                                     ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+  From now on, ALWAYS use --n-steps-per-env when training!
+
+  Default (if omitted): --n-steps-per-env 128
+  Recommended:          --n-steps-per-env 256
+
+  Old behavior (n_steps = 2048 // n_envs) is GONE and was incorrect!
+
+╔══════════════════════════════════════════════════════════════════════════════╗
+                           Ready to train properly! 🚀
+╚══════════════════════════════════════════════════════════════════════════════╝

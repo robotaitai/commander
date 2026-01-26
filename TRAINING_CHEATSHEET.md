@@ -11,16 +11,19 @@ python -c "import torch; print(torch.cuda.is_available())"  # Check PyTorch CUDA
 
 ### Training - Quick Start
 ```bash
-# Conservative (safe, 16 envs)
-python -m mission_gym.scripts.train_ppo --timesteps 10000000 --n-envs 16 --subproc --run-name my-run
+# Conservative (safe, 16 envs, small batch)
+python -m mission_gym.scripts.train_ppo --timesteps 10000000 --n-envs 16 --n-steps-per-env 128 --subproc --run-name my-run
 
-# Balanced (recommended, 32 envs, larger network)
-python -m mission_gym.scripts.train_ppo --timesteps 50000000 --n-envs 32 --subproc \
+# Balanced (recommended, 32 envs, 8192 batch)
+python -m mission_gym.scripts.train_ppo --timesteps 50000000 --n-envs 32 --n-steps-per-env 256 --subproc \
   --network-arch "512,512,256" --n-epochs 20 --run-name my-run
 
-# Maximum GPU (64 envs, large network)
-python -m mission_gym.scripts.train_ppo --timesteps 50000000 --n-envs 64 --subproc \
+# Maximum (64 envs, 16384 batch, large network)
+python -m mission_gym.scripts.train_ppo --timesteps 50000000 --n-envs 64 --n-steps-per-env 256 --subproc \
   --network-arch "1024,512,512,256" --n-epochs 30 --run-name my-run
+
+# Parallel (4 jobs for GPU saturation)
+./add_parallel_jobs.sh  # Or: ./parallel_train.sh for fresh start
 ```
 
 ### Training - With Branching
@@ -45,14 +48,17 @@ tail -f runs/YOUR-RUN/training.log
 
 ---
 
-## Performance Tiers
+## Performance Tiers (Single Job)
 
-| Config | n-envs | network-arch | n-epochs | GPU % | FPS | Time (50M) |
-|--------|--------|--------------|----------|-------|-----|------------|
-| Conservative | 16 | 256,256 | 10 | 40% | 400 | 35h |
-| **Balanced** ⭐ | **32** | **512,512,256** | **20** | **70%** | **500** | **28h** |
-| High-Perf | 64 | 512,512,256 | 20 | 85% | 650 | 21h |
-| Maximum | 64 | 1024,512,512,256 | 30 | 95% | 450 | 31h |
+| Config | n-envs | n-steps-per-env | Buffer | network-arch | n-epochs | GPU %* | FPS | Time (50M) |
+|--------|--------|-----------------|--------|--------------|----------|--------|-----|------------|
+| Conservative | 16 | 128 | 2K | 256,256 | 10 | 5-10% | 450 | 31h |
+| **Balanced** ⭐ | **32** | **256** | **8K** | **512,512,256** | **20** | **10-20%** | **600** | **23h** |
+| High-Perf | 48 | 256 | 12K | 1024,512,256 | 25 | 15-25% | 700 | 20h |
+| Maximum | 64 | 256 | 16K | 1024,512,512,256 | 30 | 20-30% | 750 | 18h |
+| **Parallel×4** 🔥 | 24×4 | 256 | 6K ea | mixed | 20-30 | **50-70%** | ~600 ea | ~23h |
+
+**Note:** With MLP policies, GPU is idle during CPU-bound rollout phase. Use parallel jobs for higher GPU utilization!
 
 ---
 
@@ -65,9 +71,10 @@ tail -f runs/YOUR-RUN/training.log
 - `--run-name NAME` - Custom run name
 
 ### GPU Optimization
-- `--network-arch "512,512,256"` - Network layers
-- `--n-epochs 20` - Epochs per update (more = more GPU work)
-- `--device auto|cuda|cpu` - Device selection
+- `--n-steps-per-env 256` - Steps per env per rollout (buffer = n_steps × n_envs)
+- `--network-arch "512,512,256"` - Network layers (larger = more GPU compute)
+- `--n-epochs 20` - Epochs per update (more = more GPU work per rollout)
+- **Tip:** Run 3-4 parallel jobs to saturate GPU (single MLP job uses only ~10-25%)
 
 ### Branching
 - `--parent-checkpoint PATH` - Load parent checkpoint
@@ -120,9 +127,10 @@ sudo systemctl restart nvidia-persistenced
 # Or: sudo reboot
 ```
 
-**Low GPU utilization?**
-- Increase `--network-arch "512,512,256"`
-- Increase `--n-epochs 20`
+**Low GPU utilization? (10-25% for single MLP job is NORMAL)**
+- This is expected: GPU is idle during CPU-bound rollout phase
+- **Solution:** Run 3-4 parallel jobs to saturate GPU (use `add_parallel_jobs.sh`)
+- Or: Increase `--n-steps-per-env 512` + `--network-arch "1024,512,512,256"` + `--n-epochs 30`
 
 **Out of memory?**
 - Reduce `--n-envs 16`
@@ -137,13 +145,14 @@ pip install --upgrade tensorboard protobuf
 
 ## Best Practices
 
-1. ✅ Start with **Balanced** config (32 envs, 512×512×256)
+1. ✅ Start with **Balanced** config (32 envs × 256 steps = 8192 buffer)
 2. ✅ Use `--subproc` for true parallelism
-3. ✅ Always use `--parent-checkpoint` + `--branch-name` for experiments
-4. ✅ Monitor GPU with `watch -n 2 nvidia-smi`
-5. ✅ Check dashboard after first 5-10M steps
-6. ✅ Keep checkpoints (save every 100K steps)
-7. ✅ Set `--seed` for reproducibility
+3. ✅ Run **3-4 parallel jobs** for maximum GPU utilization (50-70% vs 10-25%)
+4. ✅ Always use `--parent-checkpoint` + `--branch-name` for experiments
+5. ✅ Monitor GPU with `watch -n 2 nvidia-smi`
+6. ✅ Check dashboard after first 5-10M steps
+7. ✅ Keep checkpoints (auto-save every 10K steps)
+8. ✅ Set `--seed` for reproducibility
 
 ---
 
@@ -168,19 +177,23 @@ runs/
 
 ```bash
 # 1. Initial training
-python -m mission_gym.scripts.train_ppo --timesteps 10000000 --n-envs 16 --subproc --run-name baseline --seed 42
+python -m mission_gym.scripts.train_ppo --timesteps 10000000 --n-envs 16 --n-steps-per-env 128 \
+  --subproc --run-name baseline --seed 42
 
 # 2. Continue with better config
-python -m mission_gym.scripts.train_ppo --timesteps 30000000 --n-envs 32 --subproc \
-  --network-arch "512,512,256" --n-epochs 20 \
+python -m mission_gym.scripts.train_ppo --timesteps 30000000 --n-envs 32 --n-steps-per-env 256 \
+  --subproc --network-arch "512,512,256" --n-epochs 20 \
   --parent-checkpoint runs/baseline-TIMESTAMP/checkpoints/ppo_mission_10000000_steps \
   --branch-name baseline-continued --seed 42
 
 # 3. Branch for experiment
-python -m mission_gym.scripts.train_ppo --timesteps 20000000 --n-envs 32 --subproc \
-  --network-arch "512,512,256" --n-epochs 20 \
+python -m mission_gym.scripts.train_ppo --timesteps 20000000 --n-envs 32 --n-steps-per-env 256 \
+  --subproc --network-arch "512,512,256" --n-epochs 20 \
   --parent-checkpoint runs/baseline-continued-TIMESTAMP/checkpoints/ppo_mission_XXXXX_steps \
   --branch-name test-new-reward --notes "Testing increased stealth rewards" --seed 42
+
+# 4. Run parallel experiments for GPU saturation
+./add_parallel_jobs.sh  # Adds 3 more jobs to existing training (4 total)
 ```
 
 ---

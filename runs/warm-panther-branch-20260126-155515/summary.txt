@@ -1,0 +1,19 @@
+Training Run Summary
+====================
+Run: warm-panther-branch-20260126-155515
+Saved: 2026-01-26 16:20:21
+
+Episodes: 100
+Timesteps: 1,159,168
+
+Reward Statistics:
+  Mean:      -10.72 ± 169.58
+  Min:       -354.95
+  Max:       353.56
+  Final 100: -10.72
+  Final 10:  43.53
+
+Improvement:
+  Early (first 10%):  -19.55
+  Late (last 10%):    43.53
+  Improvement:        +63.07

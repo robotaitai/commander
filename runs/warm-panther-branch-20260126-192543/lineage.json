@@ -1,0 +1,214 @@
+{
+  "created_at": "2026-01-26T19:26:09.927682",
+  "git_commit_hash": "bcb4b368451db36d8d08ca08f6005a666e1b4deb",
+  "config_hash": "aa9fe0996444aeb15a2fb02e726d3d143f5864c5a487853b035741d378a52c51",
+  "parent_checkpoint_path": "/home/itai/code/commander/runs/warm-panther-branch-20260126-164903/checkpoints/ppo_mission_2216448_steps.zip",
+  "parent_run_name": "warm-panther-branch-20260126-164903",
+  "parent_run_dir": "/home/itai/code/commander/runs/warm-panther-branch-20260126-164903",
+  "root_ancestor": "warm-panther-20260122-165345",
+  "parent_lineage": {
+    "created_at": "2026-01-26T16:49:31.695463",
+    "git_commit_hash": "bcb4b368451db36d8d08ca08f6005a666e1b4deb",
+    "config_hash": "aa9fe0996444aeb15a2fb02e726d3d143f5864c5a487853b035741d378a52c51",
+    "parent_checkpoint_path": "runs/2-defenders-gpu-beast-20260125-234819/checkpoints/ppo_mission_34724352_steps.zip",
+    "parent_run_name": "2-defenders-gpu-beast-20260125-234819",
+    "parent_run_dir": "/home/itai/code/commander/runs/2-defenders-gpu-beast-20260125-234819",
+    "root_ancestor": "warm-panther-20260122-165345",
+    "parent_lineage": {
+      "created_at": "2026-01-25T23:48:45.616204",
+      "git_commit_hash": "98702285af69e9daed0ea48e1cf7a85701390af3",
+      "config_hash": "aa9fe0996444aeb15a2fb02e726d3d143f5864c5a487853b035741d378a52c51",
+      "parent_checkpoint_path": "runs/2-defenders-continued-20260125-171431/checkpoints/ppo_mission_2860000_steps.zip",
+      "parent_run_name": "2-defenders-continued-20260125-171431",
+      "parent_run_dir": "/home/itai/code/commander/runs/2-defenders-continued-20260125-171431",
+      "parent_lineage": {
+        "created_at": "2026-01-25T17:14:36.898979",
+        "git_commit_hash": "e00532c29ecf98fefc0aecbbb0a3cc93a92934b3",
+        "config_hash": "aa9fe0996444aeb15a2fb02e726d3d143f5864c5a487853b035741d378a52c51",
+        "parent_checkpoint_path": "runs/branch-20260122-193222/checkpoints/ppo_mission_27670000_steps.zip",
+        "parent_run_name": "branch-20260122-193222",
+        "parent_run_dir": "/home/itai/code/commander/runs/branch-20260122-193222",
+        "parent_lineage": {
+          "created_at": "2026-01-22T19:32:26.832461",
+          "git_commit_hash": "9723f090fca94cac9c324563c2eb30f8be6ec7d2",
+          "config_hash": "522928ea56726fdf502b9ea47233fcf0735c3977ca6a657c00af1ac238cd1e68",
+          "parent_checkpoint_path": "/home/itai/code/commander/runs/branch-resumed-20260122-191613/checkpoints/ppo_mission_210000_steps.zip",
+          "parent_run_name": "branch-resumed-20260122-191613",
+          "parent_run_dir": "/home/itai/code/commander/runs/branch-resumed-20260122-191613",
+          "parent_lineage": {
+            "created_at": "2026-01-22T19:16:17.138631",
+            "git_commit_hash": "582c21ca11b88cc7b36a23f70000ce7dcd8b6066",
+            "config_hash": "522928ea56726fdf502b9ea47233fcf0735c3977ca6a657c00af1ac238cd1e68",
+            "parent_checkpoint_path": "runs/branch-20260122-173223/checkpoints/ppo_mission_2290000_steps.zip",
+            "parent_run_name": "branch-20260122-173223",
+            "parent_run_dir": "/home/itai/code/commander/runs/branch-20260122-173223",
+            "parent_lineage": {
+              "created_at": "2026-01-22T17:32:28.528749",
+              "git_commit_hash": "ca577f17d9700f7ad6a1efd6d69c4d127c80c101",
+              "config_hash": "522928ea56726fdf502b9ea47233fcf0735c3977ca6a657c00af1ac238cd1e68",
+              "parent_checkpoint_path": "/home/itai/code/commander/runs/warm-panther-20260122-165345/checkpoints/ppo_mission_1497600_steps.zip",
+              "parent_run_name": "warm-panther-20260122-165345",
+              "parent_run_dir": "/home/itai/code/commander/runs/warm-panther-20260122-165345",
+              "parent_lineage": {
+                "created_at": "2026-01-22T16:54:02.093806",
+                "git_commit_hash": "06c92d21f5e3b639beedb56d948ded102dbf2c14",
+                "config_hash": "522928ea56726fdf502b9ea47233fcf0735c3977ca6a657c00af1ac238cd1e68",
+                "obs_space_signature": {
+                  "type": "Box",
+                  "shape": [
+                    42
+                  ],
+                  "dtype": "float32",
+                  "low": -Infinity,
+                  "high": Infinity
+                },
+                "action_space_signature": {
+                  "type": "MultiDiscrete",
+                  "nvec": [
+                    9,
+                    9,
+                    9,
+                    9
+                  ]
+                }
+              },
+              "obs_space_signature": {
+                "type": "Box",
+                "shape": [
+                  42
+                ],
+                "dtype": "float32",
+                "low": -Infinity,
+                "high": Infinity
+              },
+              "action_space_signature": {
+                "type": "MultiDiscrete",
+                "nvec": [
+                  9,
+                  9,
+                  9,
+                  9
+                ]
+              }
+            },
+            "branch_name": "branch-resumed",
+            "obs_space_signature": {
+              "type": "Box",
+              "shape": [
+                42
+              ],
+              "dtype": "float32",
+              "low": -Infinity,
+              "high": Infinity
+            },
+            "action_space_signature": {
+              "type": "MultiDiscrete",
+              "nvec": [
+                9,
+                9,
+                9,
+                9
+              ]
+            }
+          },
+          "obs_space_signature": {
+            "type": "Box",
+            "shape": [
+              42
+            ],
+            "dtype": "float32",
+            "low": -Infinity,
+            "high": Infinity
+          },
+          "action_space_signature": {
+            "type": "MultiDiscrete",
+            "nvec": [
+              9,
+              9,
+              9,
+              9
+            ]
+          }
+        },
+        "branch_name": "2-defenders-continued",
+        "notes": "Continuing from 27.67M with 2 defenders - testing if 56% win rate policy can handle increased difficulty",
+        "obs_space_signature": {
+          "type": "Box",
+          "shape": [
+            42
+          ],
+          "dtype": "float32",
+          "low": -Infinity,
+          "high": Infinity
+        },
+        "action_space_signature": {
+          "type": "MultiDiscrete",
+          "nvec": [
+            9,
+            9,
+            9,
+            9
+          ]
+        }
+      },
+      "branch_name": "2-defenders-gpu-beast",
+      "notes": "MAXIMUM GPU: 4-layer network, 30 epochs, 64 envs",
+      "obs_space_signature": {
+        "type": "Box",
+        "shape": [
+          42
+        ],
+        "dtype": "float32",
+        "low": -Infinity,
+        "high": Infinity
+      },
+      "action_space_signature": {
+        "type": "MultiDiscrete",
+        "nvec": [
+          9,
+          9,
+          9,
+          9
+        ]
+      }
+    },
+    "notes": "Resumed after CUDA error at 34.7M steps",
+    "obs_space_signature": {
+      "type": "Box",
+      "shape": [
+        42
+      ],
+      "dtype": "float32",
+      "low": -Infinity,
+      "high": Infinity
+    },
+    "action_space_signature": {
+      "type": "MultiDiscrete",
+      "nvec": [
+        9,
+        9,
+        9,
+        9
+      ]
+    }
+  },
+  "notes": "Resumed from ppo_mission_2216448_steps",
+  "obs_space_signature": {
+    "type": "Box",
+    "shape": [
+      42
+    ],
+    "dtype": "float32",
+    "low": -Infinity,
+    "high": Infinity
+  },
+  "action_space_signature": {
+    "type": "MultiDiscrete",
+    "nvec": [
+      9,
+      9,
+      9,
+      9
+    ]
+  }
+}

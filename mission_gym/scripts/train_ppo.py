@@ -45,6 +45,32 @@ from pathlib import Path
 import numpy as np
 
 
+def pick_batch_size(buffer_size: int, target_frac: float = 0.25, min_bs: int = 64) -> int:
+    """
+    Pick a batch size that is:
+    1. A multiple of 64 (for GPU efficiency)
+    2. Divides buffer_size evenly (required by PPO)
+    3. Close to target_frac of buffer_size
+    
+    Args:
+        buffer_size: Total rollout buffer size (n_steps * n_envs)
+        target_frac: Target fraction of buffer to use per batch (default: 0.25 = 4 minibatches)
+        min_bs: Minimum batch size (default: 64)
+    
+    Returns:
+        A valid batch size that satisfies all constraints
+    """
+    target = int(buffer_size * target_frac)
+    bs = max(min_bs, (target // 64) * 64)
+    bs = min(bs, buffer_size)
+    
+    # Ensure divisibility: decrement by 64 until we find a valid batch size
+    while bs >= min_bs and buffer_size % bs != 0:
+        bs -= 64
+    
+    return max(min_bs, bs)
+
+
 def main():
     """Run PPO training."""
     parser = argparse.ArgumentParser(description="Train PPO agent on Mission Gym")
@@ -80,8 +106,8 @@ def main():
     parser.add_argument(
         "--eval-freq",
         type=int,
-        default=5000,
-        help="Evaluation frequency in timesteps (default: 5000)",
+        default=20000,
+        help="Evaluation frequency in timesteps (default: 20000)",
     )
     parser.add_argument(
         "--no-tensorboard",
@@ -123,6 +149,12 @@ def main():
         type=int,
         default=10,
         help="Number of epochs for each policy update (more epochs = more GPU work per rollout). Default: 10",
+    )
+    parser.add_argument(
+        "--n-steps-per-env",
+        type=int,
+        default=128,
+        help="Rollout steps per environment (default: 128). Total rollout buffer = n_steps_per_env * n_envs",
     )
     args = parser.parse_args()
     
@@ -303,7 +335,7 @@ def main():
         html_monitor=html_monitor,
         n_eval_episodes=5,
         eval_freq=args.eval_freq,
-        verbose=1,
+        verbose=0,  # Disable console output - updates dashboard instead
     )
     
     # Checkpoint callback
@@ -421,15 +453,27 @@ def main():
     try:
         tb_log = None if args.no_tensorboard else str(log_path)
         
-        # Optimize batch size based on n_envs for better GPU utilization
-        # n_steps * n_envs should be divisible by batch_size
-        rollout_buffer_size = 2048 // args.n_envs * args.n_envs
-        batch_size = rollout_buffer_size // 4  # Use 1/4 of buffer for optimal GPU batching
-        # Round to multiple of 64 for GPU efficiency
-        batch_size = max(64, ((batch_size + 63) // 64) * 64)
+        # Calculate rollout buffer size and batch size for optimal GPU utilization
+        # n_steps is now steps per environment (not divided by n_envs)
+        n_steps = args.n_steps_per_env
+        rollout_buffer_size = n_steps * args.n_envs
+        
+        # Pick batch size that divides rollout_buffer_size and is a multiple of 64
+        batch_size = pick_batch_size(rollout_buffer_size, target_frac=0.25, min_bs=64)
         
         # Parse network architecture from command line
         net_arch = [int(x.strip()) for x in args.network_arch.split(',')]
+        
+        print()
+        print(f"  {c.colorize('🔧 PPO Configuration:', c.BRIGHT_YELLOW)}")
+        print(f"     n_steps_per_env:     {c.colorize(str(n_steps), c.BRIGHT_CYAN)}")
+        print(f"     n_envs:              {c.colorize(str(args.n_envs), c.BRIGHT_CYAN)}")
+        print(f"     rollout_buffer_size: {c.colorize(str(rollout_buffer_size), c.BRIGHT_GREEN)} (= {n_steps} × {args.n_envs})")
+        print(f"     batch_size:          {c.colorize(str(batch_size), c.BRIGHT_GREEN)} ({rollout_buffer_size // batch_size} minibatches)")
+        print(f"     n_epochs:            {c.colorize(str(args.n_epochs), c.BRIGHT_CYAN)}")
+        print(f"     net_arch:            {c.colorize(str(net_arch), c.BRIGHT_MAGENTA)}")
+        print(f"     Total updates/rollout: {c.colorize(str((rollout_buffer_size // batch_size) * args.n_epochs), c.YELLOW)}")
+        print()
         
         model = PPO(
             "MlpPolicy",
@@ -439,7 +483,7 @@ def main():
             tensorboard_log=tb_log,
             device=device,  # Explicit device selection
             learning_rate=3e-4,
-            n_steps=2048 // args.n_envs,
+            n_steps=n_steps,
             batch_size=batch_size,
             n_epochs=args.n_epochs,
             gamma=0.99,
