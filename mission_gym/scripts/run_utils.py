@@ -297,6 +297,60 @@ def action_space_signature(space) -> Dict[str, Any]:
         }
 
 
+def get_root_ancestor_name(checkpoint_path: str) -> Optional[str]:
+    """
+    Extract the root ancestor name from a checkpoint's lineage tree.
+    
+    Traverses the lineage back to the root (no parent) and returns its name.
+    This is used for family-based naming (e.g., all descendants of 'warm-panther').
+    
+    Returns:
+        The root ancestor's run name, or None if not found.
+    """
+    if not checkpoint_path:
+        return None
+    
+    parent_path = Path(checkpoint_path)
+    
+    # Extract run name from checkpoint path
+    if "runs" not in parent_path.parts:
+        return None
+    
+    runs_idx = parent_path.parts.index("runs")
+    if runs_idx + 1 >= len(parent_path.parts):
+        return None
+    
+    current_run_name = parent_path.parts[runs_idx + 1]
+    
+    # Traverse lineage to find root
+    max_depth = 10  # Prevent infinite loops
+    depth = 0
+    
+    while depth < max_depth:
+        lineage_path = get_runs_dir() / current_run_name / "lineage.json"
+        
+        if not lineage_path.exists():
+            # No lineage = this is the root
+            return current_run_name
+        
+        try:
+            with open(lineage_path, "r") as f:
+                lineage = json.load(f)
+            
+            parent_name = lineage.get("parent_run_name")
+            if not parent_name:
+                # No parent = this is the root
+                return current_run_name
+            
+            # Move up the tree
+            current_run_name = parent_name
+            depth += 1
+        except Exception:
+            return current_run_name
+    
+    return current_run_name
+
+
 def save_lineage(
     run_dir: Path,
     parent_checkpoint: Optional[str] = None,
@@ -324,6 +378,11 @@ def save_lineage(
                 parent_run_name = parent_path.parts[runs_idx + 1]
                 lineage["parent_run_name"] = parent_run_name
                 lineage["parent_run_dir"] = str(get_runs_dir() / parent_run_name)
+                
+                # Find and save root ancestor name for family tracking
+                root_ancestor = get_root_ancestor_name(parent_checkpoint)
+                if root_ancestor:
+                    lineage["root_ancestor"] = root_ancestor
                 
                 # Try to load parent's lineage if it exists
                 parent_lineage_path = get_runs_dir() / parent_run_name / "lineage.json"

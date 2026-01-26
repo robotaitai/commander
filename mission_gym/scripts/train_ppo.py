@@ -136,22 +136,49 @@ def main():
         print_banner, print_gpu_status, print_step, print_info, print_warning,
         print_error, print_success, print_divider, Colors, get_nvidia_smi_info,
         update_unified_dashboard, get_runs_dir,
-        save_lineage, check_checkpoint_compatibility,
+        save_lineage, check_checkpoint_compatibility, get_root_ancestor_name,
     )
     
     c = Colors
     
-    # Determine run name (handle branching logic)
+    # Determine run name (handle branching logic with family names)
     run_name_input = None
     if args.branch_name and args.load_checkpoint:
-        # Branch mode: use branch name
-        run_name_input = args.branch_name
+        # Branch mode: prepend ancestor name for family tracking
+        root_ancestor = get_root_ancestor_name(args.load_checkpoint)
+        if root_ancestor:
+            # Extract base name without timestamp (e.g., "warm-panther" from "warm-panther-20260122-165345")
+            # Split by dash and take first parts that aren't dates
+            parts = root_ancestor.split('-')
+            # Find where timestamp starts (format: YYYYMMDD-HHMMSS)
+            base_parts = []
+            for part in parts:
+                if part.isdigit() and len(part) == 8:  # Date part
+                    break
+                base_parts.append(part)
+            ancestor_base = '-'.join(base_parts) if base_parts else root_ancestor
+            
+            # Create family name: ancestor-branch
+            run_name_input = f"{ancestor_base}-{args.branch_name}"
+        else:
+            run_name_input = args.branch_name
     elif args.run_name:
         # Custom run name
         run_name_input = args.run_name
     elif args.load_checkpoint and not args.branch_name:
-        # Loading checkpoint without explicit name - add "branch" prefix
-        run_name_input = "branch"
+        # Loading checkpoint without explicit name - use ancestor name + "branch"
+        root_ancestor = get_root_ancestor_name(args.load_checkpoint)
+        if root_ancestor:
+            parts = root_ancestor.split('-')
+            base_parts = []
+            for part in parts:
+                if part.isdigit() and len(part) == 8:
+                    break
+                base_parts.append(part)
+            ancestor_base = '-'.join(base_parts) if base_parts else root_ancestor
+            run_name_input = f"{ancestor_base}-branch"
+        else:
+            run_name_input = "branch"
     # Otherwise None - will auto-generate
     
     # Create run directory
@@ -352,6 +379,20 @@ def main():
         action_space=action_space,
     )
     print_info(f"Lineage saved to {run_dir / 'lineage.json'}")
+    
+    # Display root ancestor for family tracking
+    if args.load_checkpoint:
+        root_ancestor = get_root_ancestor_name(args.load_checkpoint)
+        if root_ancestor:
+            # Extract base name
+            parts = root_ancestor.split('-')
+            base_parts = []
+            for part in parts:
+                if part.isdigit() and len(part) == 8:
+                    break
+                base_parts.append(part)
+            ancestor_base = '-'.join(base_parts) if base_parts else root_ancestor
+            print_info(f"Family lineage: {ancestor_base} → ... → {run_name}")
     
     # Detect GPU and set device
     print()

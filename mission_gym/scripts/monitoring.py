@@ -1725,8 +1725,8 @@ class HTMLMonitorCallback(BaseCallback):
         
         commands.append({
             "name": "🌿 Branch Training",
-            "desc": "Start new branch from latest checkpoint",
-            "cmd": f"python -m mission_gym.scripts.train_ppo --timesteps 50000000 --n-envs 32 --subproc --parent-checkpoint {latest_checkpoint_model_path if latest_checkpoint_model_path else checkpoint_path + '/ppo_mission_XXXXX_steps'} --branch-name {run_name}-experiment --notes 'New experiment branch'",
+            "desc": "Start new branch from latest checkpoint (inherits family name)",
+            "cmd": f"python -m mission_gym.scripts.train_ppo --timesteps 50000000 --n-envs 32 --subproc --parent-checkpoint {latest_checkpoint_model_path if latest_checkpoint_model_path else checkpoint_path + '/ppo_mission_XXXXX_steps'} --branch-name experiment --notes 'New experiment branch'",
         })
         
         commands_html = ""
