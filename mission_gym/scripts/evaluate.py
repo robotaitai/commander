@@ -383,18 +383,20 @@ def main():
         attackers_alive = info.get("attackers_alive", info.get("fleet/attackers_alive_end", 0))
         defenders_alive = info.get("defenders_alive", info.get("fleet/defenders_alive_end", 0))
         
-        # Check for win using config-based threshold or win flag
-        win_flag = info.get("win", info.get("kpi/win", 0))
-        required_capture_time = env.config.scenario.objective.capture_time_required
+        # Use outcome field as single source of truth (consistent with training)
+        outcome = info.get("outcome", "unknown")
         
-        if win_flag or (terminated and capture_progress >= (required_capture_time - 1e-6)):
+        if outcome in ["captured", "early_success"]:
             wins += 1
             result = c.colorize("✓ WIN", c.BRIGHT_GREEN)
             result_str = "WIN"
-        elif attackers_alive == 0:
-            result = c.colorize("✗ LOST", c.BRIGHT_RED)
+        elif outcome == "all_disabled":
+            result = c.colorize("✗ LOST (All Disabled)", c.BRIGHT_RED)
             result_str = "LOST"
-        elif truncated:
+        elif outcome == "stalled":
+            result = c.colorize("⏸ STALLED", c.YELLOW)
+            result_str = "STALLED"
+        elif outcome == "timeout":
             result = c.colorize("⏱ TIMEOUT", c.YELLOW)
             result_str = "TIMEOUT"
         else:

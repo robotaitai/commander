@@ -138,6 +138,4 @@ episode:
 termination:
   stagnation_seconds: 30.0              # End episode if no progress for this many seconds
   min_dist_epsilon: 1.0                 # Minimum improvement (meters) to count as progress
-  capture_progress_epsilon: 0.5         # Minimum capture progress (seconds) to count as progress
-  ignore_stagnation_while_in_zone: true # Don't count stagnation while units are in objective zone
   early_success_capture_progress: null  # Optional: end early if this capture progress reached (e.g., 15.0)

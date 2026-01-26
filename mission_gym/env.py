@@ -353,8 +353,8 @@ class MissionGymEnv(gym.Env):
         # Check if agent made progress this step
         made_progress = False
         
-        # Progress signal 1: Capture progress increased
-        if total_capture_delta > 0:
+        # Progress signal 1: Capture progress increased by at least epsilon
+        if total_capture_delta >= self.config.termination.capture_progress_epsilon:
             made_progress = True
         
         # Progress signal 2: Distance improved by at least min_dist_epsilon
@@ -365,6 +365,23 @@ class MissionGymEnv(gym.Env):
         # Update last progress time
         if made_progress:
             self._last_progress_time = self.sim_time
+        
+        # Check if any attacker is in the objective zone
+        any_in_zone = False
+        for a in self.attackers:
+            if a.is_disabled:
+                continue
+            dist = math.sqrt(
+                (a.x - self.objective.x) ** 2 +
+                (a.y - self.objective.y) ** 2
+            )
+            if dist <= self.objective.radius:
+                any_in_zone = True
+                break
+        
+        # Ignore stagnation if configured and units are in zone
+        if self.config.termination.ignore_stagnation_while_in_zone and any_in_zone:
+            self._last_progress_time = self.sim_time  # Reset stagnation timer
         
         # Check for stagnation (no progress for too long)
         time_since_progress = self.sim_time - self._last_progress_time

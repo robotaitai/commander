@@ -371,6 +371,8 @@ class TerminationConfig:
     """Early termination configuration."""
     stagnation_seconds: float
     min_dist_epsilon: float
+    capture_progress_epsilon: float  # Minimum capture progress to count as progress
+    ignore_stagnation_while_in_zone: bool  # Don't count stagnation if units in zone
     early_success_capture_progress: Optional[float]
     
     @classmethod
@@ -380,6 +382,8 @@ class TerminationConfig:
         return cls(
             stagnation_seconds=term.get("stagnation_seconds", 30.0),
             min_dist_epsilon=term.get("min_dist_epsilon", 1.0),
+            capture_progress_epsilon=term.get("capture_progress_epsilon", 0.5),
+            ignore_stagnation_while_in_zone=term.get("ignore_stagnation_while_in_zone", True),
             early_success_capture_progress=term.get("early_success_capture_progress"),
         )
 
