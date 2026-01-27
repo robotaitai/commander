@@ -14,6 +14,10 @@ os.environ['TF_DISABLE_POOL_ALLOCATOR'] = '1'
 if 'CUDA_VISIBLE_DEVICES' not in os.environ:
     os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 
+# Prevent CPU thread storms that starve subprocesses
+os.environ["OMP_NUM_THREADS"] = "1"
+os.environ["MKL_NUM_THREADS"] = "1"
+
 import sys
 import warnings
 from io import StringIO
@@ -43,6 +47,31 @@ import sys
 from pathlib import Path
 
 import numpy as np
+
+
+def choose_batch_size(total_batch: int, preferred: int = 4096) -> int:
+    """
+    Choose a batch size that divides total_batch evenly.
+    Aims for large batches (2048-8192) for better GPU utilization.
+    
+    Args:
+        total_batch: Total rollout buffer size (n_envs * n_steps)
+        preferred: Preferred batch size (default: 4096)
+    
+    Returns:
+        A valid batch size that divides total_batch evenly
+    """
+    # Try preferred sizes in descending order
+    for bs in [preferred, 8192, 4096, 2048, 1024, 512, 256]:
+        if bs <= total_batch and total_batch % bs == 0:
+            return bs
+    
+    # Fallback: find smallest safe divisor >= 256
+    for bs in range(256, total_batch + 1, 256):
+        if total_batch % bs == 0:
+            return bs
+    
+    return 256
 
 
 def pick_batch_size(buffer_size: int, target_frac: float = 0.25, min_bs: int = 64) -> int:
@@ -141,20 +170,33 @@ def main():
     parser.add_argument(
         "--network-arch",
         type=str,
-        default="256,256",
-        help="Neural network architecture as comma-separated layer sizes (e.g., '512,512,256' for larger network). Default: '256,256'",
+        default="512,512,256",
+        help="Neural network architecture as comma-separated layer sizes (e.g., '1024,512,256' for larger network). Default: '512,512,256'",
     )
     parser.add_argument(
         "--n-epochs",
         type=int,
-        default=10,
-        help="Number of epochs for each policy update (more epochs = more GPU work per rollout). Default: 10",
+        default=20,
+        help="Number of epochs for each policy update (more epochs = more GPU work per rollout). Default: 20",
     )
     parser.add_argument(
         "--n-steps-per-env",
         type=int,
-        default=128,
-        help="Rollout steps per environment (default: 128). Total rollout buffer = n_steps_per_env * n_envs",
+        default=256,
+        help="Rollout steps per environment (default: 256). Total rollout buffer = n_steps_per_env * n_envs",
+    )
+    parser.add_argument(
+        "--batch-size",
+        type=int,
+        default=None,
+        help="PPO minibatch size (auto-calculated if not specified, must divide n_envs*n_steps)",
+    )
+    parser.add_argument(
+        "--preset",
+        type=str,
+        choices=["fast", "heavy", "beast"],
+        default=None,
+        help="Training preset (overrides n-envs, n-steps-per-env, n-epochs, network-arch): fast (GPU ~30%%) / heavy (GPU ~50%%) / beast (GPU ~80%%)",
     )
     args = parser.parse_args()
     
@@ -170,6 +212,43 @@ def main():
         update_unified_dashboard, get_runs_dir,
         save_lineage, check_checkpoint_compatibility, get_root_ancestor_name,
     )
+    
+    # Apply preset if specified (overrides individual parameters)
+    if args.preset:
+        presets = {
+            "fast": {
+                "n_envs": 16,
+                "n_steps_per_env": 256,
+                "n_epochs": 15,
+                "network_arch": "512,512",
+                "description": "Fast preset: 16 envs × 256 steps = 4K batch, ~30% GPU"
+            },
+            "heavy": {
+                "n_envs": 32,
+                "n_steps_per_env": 256,
+                "n_epochs": 20,
+                "network_arch": "1024,512,256",
+                "description": "Heavy preset: 32 envs × 256 steps = 8K batch, ~50% GPU"
+            },
+            "beast": {
+                "n_envs": 64,
+                "n_steps_per_env": 512,
+                "n_epochs": 30,
+                "network_arch": "1024,512,512,256",
+                "description": "Beast preset: 64 envs × 512 steps = 32K batch, ~80% GPU"
+            },
+        }
+        preset = presets[args.preset]
+        args.n_envs = preset["n_envs"]
+        args.n_steps_per_env = preset["n_steps_per_env"]
+        args.n_epochs = preset["n_epochs"]
+        args.network_arch = preset["network_arch"]
+        
+        print()
+        print(f"  🎯 {Colors.colorize('Preset:', Colors.BRIGHT_YELLOW)} {Colors.colorize(args.preset.upper(), Colors.BRIGHT_CYAN)}")
+        print(f"     {preset['description']}")
+        if args.preset == "beast":
+            print(f"     {Colors.colorize('⚠️  Warning: Beast preset requires ~16 CPU cores', Colors.YELLOW)}")
     
     c = Colors
     
@@ -285,9 +364,13 @@ def main():
         return _init
     
     try:
-        if args.subproc:
-            envs = SubprocVecEnv([make_env(args.seed + i) for i in range(args.n_envs)])
-            print_info(f"Created {args.n_envs} environments (SubprocVecEnv - true parallelism)")
+        # Use SubprocVecEnv for true parallelism when n_envs >= 8
+        if args.subproc or args.n_envs >= 8:
+            envs = SubprocVecEnv(
+                [make_env(args.seed + i) for i in range(args.n_envs)],
+                start_method="forkserver"  # More stable than fork
+            )
+            print_info(f"Created {args.n_envs} environments (SubprocVecEnv - true parallelism, forkserver)")
         else:
             envs = DummyVecEnv([make_env(args.seed + i) for i in range(args.n_envs)])
             print_info(f"Created {args.n_envs} environments (DummyVecEnv)")
@@ -428,14 +511,26 @@ def main():
     
     # Detect GPU and set device
     print()
-    print_step(7, "Detecting compute device")
+    print_step(7, "Detecting compute device and optimizing")
     try:
         import torch
+        
+        # Optimize PyTorch for GPU training
+        torch.set_num_threads(1)  # Prevent thread storms
+        
         if torch.cuda.is_available():
             device = "cuda"
             gpu_name = torch.cuda.get_device_name(0)
             gpu_mem = torch.cuda.get_device_properties(0).total_memory / (1024**3)
-            print_info(f"✓ GPU detected: {gpu_name} ({gpu_mem:.1f} GB)")
+            
+            # Enable TF32 for faster matmul on Ampere+ GPUs (RTX 30xx/40xx)
+            torch.backends.cuda.matmul.allow_tf32 = True
+            torch.backends.cudnn.allow_tf32 = True
+            try:
+                torch.set_float32_matmul_precision("high")
+                print_info(f"✓ GPU detected: {gpu_name} ({gpu_mem:.1f} GB) [TF32 enabled]")
+            except Exception:
+                print_info(f"✓ GPU detected: {gpu_name} ({gpu_mem:.1f} GB)")
             print_info(f"  CUDA version: {torch.version.cuda}")
             print_info(f"  Using device: cuda:0")
         else:
@@ -458,8 +553,17 @@ def main():
         n_steps = args.n_steps_per_env
         rollout_buffer_size = n_steps * args.n_envs
         
-        # Pick batch size that divides rollout_buffer_size and is a multiple of 64
-        batch_size = pick_batch_size(rollout_buffer_size, target_frac=0.25, min_bs=64)
+        # Choose batch size for GPU efficiency
+        if args.batch_size:
+            batch_size = args.batch_size
+            if rollout_buffer_size % batch_size != 0:
+                print_error(f"batch_size {batch_size} must divide rollout_buffer_size {rollout_buffer_size}")
+                return 1
+            print_info(f"Using user-specified batch_size: {batch_size}")
+        else:
+            # Auto-select large batch size for GPU (prefer 4096, fallback to largest valid divisor)
+            batch_size = choose_batch_size(rollout_buffer_size, preferred=4096)
+            print_info(f"Auto-selected batch_size: {batch_size}")
         
         # Parse network architecture from command line
         net_arch = [int(x.strip()) for x in args.network_arch.split(',')]

@@ -1,0 +1,19 @@
+Training Run Summary
+====================
+Run: warm-panther-clean-output-20260126-221549
+Saved: 2026-01-27 01:33:33
+
+Episodes: 100
+Timesteps: 9,459,840
+
+Reward Statistics:
+  Mean:      30.37 ± 164.95
+  Min:       -118.10
+  Max:       357.50
+  Final 100: 30.37
+  Final 10:  47.43
+
+Improvement:
+  Early (first 10%):  145.66
+  Late (last 10%):    47.43
+  Improvement:        -98.23

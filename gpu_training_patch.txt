@@ -1,0 +1,66 @@
+This file documents the changes needed for GPU-heavy training.
+Apply these changes to mission_gym/scripts/train_ppo.py:
+
+1. After torch import, add TF32 and thread limiting:
+   import torch
+   torch.set_num_threads(1)
+   torch.backends.cuda.matmul.allow_tf32 = True
+   torch.backends.cudnn.allow_tf32 = True
+   try:
+       torch.set_float32_matmul_precision("high")
+   except Exception:
+       pass
+
+2. Add preset argument to parser (after --timesteps):
+   parser.add_argument(
+       "--preset",
+       type=str,
+       choices=["fast", "heavy", "beast"],
+       default=None,
+       help="Training preset (overrides other params): fast/heavy/beast"
+   )
+
+3. Change --n-steps-per-env default from 128 to 256
+
+4. Change --n-epochs default from 10 to 20
+
+5. Change --network-arch default from "256,256" to "512,512,256"
+
+6. Add --batch-size argument:
+   parser.add_argument(
+       "--batch-size",
+       type=int,
+       default=None,
+       help="PPO minibatch size (auto if not specified, must divide n_envs*n_steps)"
+   )
+
+7. After args parsing, add preset handling:
+   # Apply preset if specified
+   if args.preset:
+       presets = {
+           "fast": {"n_envs": 16, "n_steps_per_env": 256, "n_epochs": 15, "network_arch": "512,512"},
+           "heavy": {"n_envs": 32, "n_steps_per_env": 256, "n_epochs": 20, "network_arch": "1024,512,256"},
+           "beast": {"n_envs": 64, "n_steps_per_env": 512, "n_epochs": 30, "network_arch": "1024,512,512,256"},
+       }
+       preset = presets[args.preset]
+       args.n_envs = preset["n_envs"]
+       args.n_steps_per_env = preset["n_steps_per_env"]
+       args.n_epochs = preset["n_epochs"]
+       args.network_arch = preset["network_arch"]
+       if args.preset == "beast":
+           print_warning("Beast preset requires ~16 CPU cores for optimal performance")
+
+8. Change batch size calculation to use choose_batch_size():
+   total_batch = n_steps * args.n_envs
+   if args.batch_size:
+       batch_size = args.batch_size
+       assert total_batch % batch_size == 0, f"batch_size {batch_size} must divide total_batch {total_batch}"
+   else:
+       batch_size = choose_batch_size(total_batch, preferred=4096)
+
+9. Default to SubprocVecEnv when n_envs >= 8:
+   if args.subproc or args.n_envs >= 8:
+       envs = SubprocVecEnv([make_env(args.seed + i) for i in range(args.n_envs)], start_method="forkserver")
+   else:
+       envs = DummyVecEnv([make_env(args.seed + i) for i in range(args.n_envs)])
+

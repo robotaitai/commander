@@ -1,0 +1,143 @@
+# World configuration
+arena:
+  width: 200.0   # meters
+  height: 200.0  # meters
+
+# Obstacles block motion and line-of-sight
+# Note: UAVs at altitude > 0 can fly over obstacles
+obstacles:
+  # === Large structures ===
+  # Building near bottom center
+  - type: rect
+    x: 100.0
+    y: 40.0
+    width: 25.0
+    height: 15.0
+    angle: 0.0
+
+  # Building near top-left
+  - type: rect
+    x: 60.0
+    y: 160.0
+    width: 20.0
+    height: 12.0
+    angle: 15.0
+
+  # Large rock formation
+  - type: circle
+    x: 150.0
+    y: 60.0
+    radius: 12.0
+
+  # Another structure
+  - type: rect
+    x: 160.0
+    y: 150.0
+    width: 18.0
+    height: 10.0
+    angle: -20.0
+
+  # === Forest area (NW quadrant) ===
+  # Dense trees - UGVs can't navigate, UAVs fly over
+  - type: circle
+    x: 35.0
+    y: 140.0
+    radius: 4.0
+  - type: circle
+    x: 42.0
+    y: 148.0
+    radius: 3.5
+  - type: circle
+    x: 28.0
+    y: 152.0
+    radius: 4.5
+  - type: circle
+    x: 38.0
+    y: 158.0
+    radius: 3.0
+  - type: circle
+    x: 48.0
+    y: 142.0
+    radius: 3.5
+  - type: circle
+    x: 25.0
+    y: 138.0
+    radius: 4.0
+  - type: circle
+    x: 32.0
+    y: 130.0
+    radius: 3.5
+  - type: circle
+    x: 45.0
+    y: 135.0
+    radius: 4.0
+  - type: circle
+    x: 52.0
+    y: 155.0
+    radius: 3.0
+  - type: circle
+    x: 22.0
+    y: 145.0
+    radius: 3.5
+
+  # === Rocky terrain (SE area) ===
+  - type: circle
+    x: 165.0
+    y: 35.0
+    radius: 5.0
+  - type: circle
+    x: 175.0
+    y: 42.0
+    radius: 4.0
+  - type: circle
+    x: 180.0
+    y: 30.0
+    radius: 3.5
+  - type: circle
+    x: 155.0
+    y: 25.0
+    radius: 4.5
+
+  # === Barriers near objective ===
+  # Creates chokepoints that favor tactical approach
+  - type: rect
+    x: 75.0
+    y: 85.0
+    width: 10.0
+    height: 4.0
+    angle: 45.0
+
+  - type: rect
+    x: 125.0
+    y: 115.0
+    width: 10.0
+    height: 4.0
+    angle: -45.0
+
+  # Scattered obstacles
+  - type: circle
+    x: 50.0
+    y: 70.0
+    radius: 6.0
+
+  - type: circle
+    x: 140.0
+    y: 170.0
+    radius: 5.0
+
+# Physics settings
+physics:
+  tick_rate: 20.0       # Hz (internal simulation rate)
+  action_repeat: 5      # commands at 4 Hz (20/5)
+  
+# Episode settings
+episode:
+  max_duration: 300.0   # seconds (5 minutes)
+
+# Early termination conditions (speed up training by ending stagnant episodes)
+termination:
+  stagnation_seconds: 30.0              # End episode if no progress for this many seconds
+  min_dist_epsilon: 1.0                 # Minimum improvement (meters) to count as progress
+  capture_progress_epsilon: 0.5         # Minimum capture progress (seconds) to count as progress
+  ignore_stagnation_while_in_zone: true # Don't count stagnation while units are in objective zone
+  early_success_capture_progress: null  # Optional: end early if this capture progress reached (e.g., 15.0)
