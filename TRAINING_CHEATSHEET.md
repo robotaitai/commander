@@ -9,27 +9,27 @@ watch -n 2 nvidia-smi              # Monitor GPU real-time
 python -c "import torch; print(torch.cuda.is_available())"  # Check PyTorch CUDA
 ```
 
-### Training - Quick Start
+### Training - Quick Start (USE PRESETS!)
 ```bash
-# Conservative (safe, 16 envs, small batch)
-python -m mission_gym.scripts.train_ppo --timesteps 10000000 --n-envs 16 --n-steps-per-env 128 --subproc --run-name my-run
+# Fast preset (testing, ~30% GPU)
+python -m mission_gym.scripts.train_ppo --preset fast --timesteps 10000000 --run-name my-run
 
-# Balanced (recommended, 32 envs, 8192 batch)
-python -m mission_gym.scripts.train_ppo --timesteps 50000000 --n-envs 32 --n-steps-per-env 256 --subproc \
-  --network-arch "512,512,256" --n-epochs 20 --run-name my-run
+# Heavy preset (recommended, ~50% GPU) ⭐
+python -m mission_gym.scripts.train_ppo --preset heavy --timesteps 50000000 --run-name my-run
 
-# Maximum (64 envs, 16384 batch, large network)
-python -m mission_gym.scripts.train_ppo --timesteps 50000000 --n-envs 64 --n-steps-per-env 256 --subproc \
-  --network-arch "1024,512,512,256" --n-epochs 30 --run-name my-run
+# Beast preset (maximum, ~80% GPU, needs 16 CPU cores)
+python -m mission_gym.scripts.train_ppo --preset beast --timesteps 50000000 --run-name my-run
 
-# Parallel (4 jobs for GPU saturation)
-./add_parallel_jobs.sh  # Or: ./parallel_train.sh for fresh start
+# Parallel (4 jobs for GPU saturation → 70-90%)
+for i in {1..4}; do
+  python -m mission_gym.scripts.train_ppo --preset heavy --timesteps 50M --run-name "job-$i" &
+done
 ```
 
 ### Training - With Branching
 ```bash
-python -m mission_gym.scripts.train_ppo --timesteps 50000000 --n-envs 32 --subproc \
-  --network-arch "512,512,256" --n-epochs 20 \
+# Use preset for easy GPU optimization
+python -m mission_gym.scripts.train_ppo --preset heavy --timesteps 50000000 \
   --parent-checkpoint runs/PARENT-RUN/checkpoints/ppo_mission_XXXXX_steps \
   --branch-name my-branch --notes "Experiment description"
 ```
@@ -39,26 +39,26 @@ python -m mission_gym.scripts.train_ppo --timesteps 50000000 --n-envs 32 --subpr
 # Open dashboard (auto-refreshes every 5s)
 firefox runs/YOUR-RUN/dashboard.html
 
+# Monitor GPU properly (high frequency!)
+nvidia-smi dmon -s u              # Device monitoring (best)
+watch -n 0.2 nvidia-smi           # Fast refresh
+
 # TensorBoard
 tensorboard --logdir runs/YOUR-RUN/logs
-
-# Watch training live
-tail -f runs/YOUR-RUN/training.log
 ```
 
 ---
 
-## Performance Tiers (Single Job)
+## Performance Tiers (Single Job) - WITH GPU OPTIMIZATIONS
 
-| Config | n-envs | n-steps-per-env | Buffer | network-arch | n-epochs | GPU %* | FPS | Time (50M) |
-|--------|--------|-----------------|--------|--------------|----------|--------|-----|------------|
-| Conservative | 16 | 128 | 2K | 256,256 | 10 | 5-10% | 450 | 31h |
-| **Balanced** ⭐ | **32** | **256** | **8K** | **512,512,256** | **20** | **10-20%** | **600** | **23h** |
-| High-Perf | 48 | 256 | 12K | 1024,512,256 | 25 | 15-25% | 700 | 20h |
-| Maximum | 64 | 256 | 16K | 1024,512,512,256 | 30 | 20-30% | 750 | 18h |
-| **Parallel×4** 🔥 | 24×4 | 256 | 6K ea | mixed | 20-30 | **50-70%** | ~600 ea | ~23h |
+| Preset | n-envs | n-steps | Batch | Batch Size | Epochs | Network | GPU %* | FPS | Time (50M) |
+|--------|--------|---------|-------|------------|--------|---------|--------|-----|------------|
+| **fast** | 16 | 256 | 4K | 2048 | 15 | 512,512 | ~30% | 800 | 17h |
+| **heavy** ⭐ | **32** | **256** | **8K** | **4096** | **20** | **1024,512,256** | **~50%** | **700** | **20h** |
+| **beast** 🔥 | 64 | 512 | 32K | 8192 | 30 | 1024,512,512,256 | ~80% | 600 | 23h |
+| **Parallel×4** 💪 | heavy×4 | - | - | - | - | - | **70-90%** | ~700 ea | ~20h |
 
-**Note:** With MLP policies, GPU is idle during CPU-bound rollout phase. Use parallel jobs for higher GPU utilization!
+**GPU optimizations enabled:** TF32 matmul, CPU thread limiting, large batches, SubprocVecEnv forkserver
 
 ---
 
@@ -70,11 +70,12 @@ tail -f runs/YOUR-RUN/training.log
 - `--subproc` - True parallelism (always use!)
 - `--run-name NAME` - Custom run name
 
-### GPU Optimization
-- `--n-steps-per-env 256` - Steps per env per rollout (buffer = n_steps × n_envs)
-- `--network-arch "512,512,256"` - Network layers (larger = more GPU compute)
-- `--n-epochs 20` - Epochs per update (more = more GPU work per rollout)
-- **Tip:** Run 3-4 parallel jobs to saturate GPU (single MLP job uses only ~10-25%)
+### GPU Optimization (NEW!)
+- `--preset heavy` - **Use this!** Auto-configures for ~50% GPU utilization
+- `--preset fast` - Testing (16 envs, ~30% GPU)
+- `--preset beast` - Maximum (64 envs, ~80% GPU, needs 16 CPU cores)
+- `--batch-size 4096` - Manual batch size override (must divide n_envs × n_steps)
+- **Tip:** Run 4 parallel `heavy` jobs for 70-90% GPU saturation!
 
 ### Branching
 - `--parent-checkpoint PATH` - Load parent checkpoint
@@ -127,10 +128,10 @@ sudo systemctl restart nvidia-persistenced
 # Or: sudo reboot
 ```
 
-**Low GPU utilization? (10-25% for single MLP job is NORMAL)**
-- This is expected: GPU is idle during CPU-bound rollout phase
-- **Solution:** Run 3-4 parallel jobs to saturate GPU (use `add_parallel_jobs.sh`)
-- Or: Increase `--n-steps-per-env 512` + `--network-arch "1024,512,512,256"` + `--n-epochs 30`
+**Low GPU utilization?**
+- **Solution:** Use `--preset heavy` or `--preset beast` (optimized for GPU!)
+- Or: Run 4 parallel jobs: `for i in {1..4}; do python -m ... --preset heavy & done`
+- **Note:** Monitor with `nvidia-smi dmon -s u` (not 1-second snapshots!)
 
 **Out of memory?**
 - Reduce `--n-envs 16`
@@ -145,14 +146,13 @@ pip install --upgrade tensorboard protobuf
 
 ## Best Practices
 
-1. ✅ Start with **Balanced** config (32 envs × 256 steps = 8192 buffer)
-2. ✅ Use `--subproc` for true parallelism
-3. ✅ Run **3-4 parallel jobs** for maximum GPU utilization (50-70% vs 10-25%)
+1. ✅ **Use presets!** Start with `--preset heavy` (optimal for most cases)
+2. ✅ Run **4 parallel jobs** for maximum GPU utilization (70-90%)
+3. ✅ Monitor with `nvidia-smi dmon -s u` (not 1-second snapshots!)
 4. ✅ Always use `--parent-checkpoint` + `--branch-name` for experiments
-5. ✅ Monitor GPU with `watch -n 2 nvidia-smi`
-6. ✅ Check dashboard after first 5-10M steps
-7. ✅ Keep checkpoints (auto-save every 10K steps)
-8. ✅ Set `--seed` for reproducibility
+5. ✅ Check dashboard after first 5-10M steps
+6. ✅ Set `--seed` for reproducibility
+7. ✅ Beast preset needs ~16 CPU cores (use `heavy` if you have fewer)
 
 ---
 
@@ -173,27 +173,26 @@ runs/
 
 ---
 
-## Example Workflow
+## Example Workflow (WITH PRESETS!)
 
 ```bash
-# 1. Initial training
-python -m mission_gym.scripts.train_ppo --timesteps 10000000 --n-envs 16 --n-steps-per-env 128 \
-  --subproc --run-name baseline --seed 42
+# 1. Initial training (fast preset for testing)
+python -m mission_gym.scripts.train_ppo --preset fast --timesteps 10000000 --run-name baseline --seed 42
 
-# 2. Continue with better config
-python -m mission_gym.scripts.train_ppo --timesteps 30000000 --n-envs 32 --n-steps-per-env 256 \
-  --subproc --network-arch "512,512,256" --n-epochs 20 \
+# 2. Continue with heavy preset (GPU-optimized)
+python -m mission_gym.scripts.train_ppo --preset heavy --timesteps 50000000 \
   --parent-checkpoint runs/baseline-TIMESTAMP/checkpoints/ppo_mission_10000000_steps \
-  --branch-name baseline-continued --seed 42
+  --branch-name baseline-heavy --seed 42
 
 # 3. Branch for experiment
-python -m mission_gym.scripts.train_ppo --timesteps 20000000 --n-envs 32 --n-steps-per-env 256 \
-  --subproc --network-arch "512,512,256" --n-epochs 20 \
-  --parent-checkpoint runs/baseline-continued-TIMESTAMP/checkpoints/ppo_mission_XXXXX_steps \
-  --branch-name test-new-reward --notes "Testing increased stealth rewards" --seed 42
+python -m mission_gym.scripts.train_ppo --preset heavy --timesteps 20000000 \
+  --parent-checkpoint runs/baseline-heavy-TIMESTAMP/checkpoints/ppo_mission_XXXXX_steps \
+  --branch-name test-new-reward --notes "Testing reward changes" --seed 42
 
-# 4. Run parallel experiments for GPU saturation
-./add_parallel_jobs.sh  # Adds 3 more jobs to existing training (4 total)
+# 4. Run 4 parallel heavy jobs for GPU saturation (70-90%)
+for i in {1..4}; do
+  python -m mission_gym.scripts.train_ppo --preset heavy --timesteps 50M --run-name "parallel-$i" --seed $((42+i)) &
+done
 ```
 
 ---
